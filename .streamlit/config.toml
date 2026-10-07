@@ -1,0 +1,11 @@
+[theme]
+# Deterministic base theme. The dashboard's own Dark/Light selector
+# (src/dashboard.py, THEME_TOKENS) restyles every component on top of this.
+base = "dark"
+primaryColor = "#4FC3E8"
+backgroundColor = "#0A0F1A"
+secondaryBackgroundColor = "#121B2B"
+textColor = "#DCE3EE"
+
+[client]
+toolbarMode = "minimal"

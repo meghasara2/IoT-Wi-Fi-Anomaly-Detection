@@ -53,6 +53,8 @@ firmware/build/
 *.toc
 *.log
 *.out
+*.lof
+*.lot
 *.synctex.gz
 *.fls
 *.fdb_latexmk

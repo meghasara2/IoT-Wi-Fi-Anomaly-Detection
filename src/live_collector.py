@@ -2813,11 +2813,29 @@ class LiveCollector:
                 available = []
                 print(f"[SERIAL][WARN] Port enumeration failed: {e}")
 
-            if self.serial_port not in available:
+            target_port = self.serial_port
+            if target_port not in available and available:
+                try:
+                    ports = serial.tools.list_ports.comports()
+                    esp_ports = [
+                        p.device for p in ports
+                        if any(s in (getattr(p, "description", "") or "").lower() or s in (getattr(p, "manufacturer", "") or "").lower()
+                               for s in ["cp210", "ch340", "ch9102", "ftdi", "usb", "esp", "uart"])
+                    ]
+                    if esp_ports:
+                        target_port = esp_ports[0]
+                        print(f"[SERIAL][INFO] Auto-detected ESP32 on port {target_port} (default was {self.serial_port})")
+                    elif len(available) == 1:
+                        target_port = available[0]
+                        print(f"[SERIAL][INFO] Using single available serial port {target_port} (default was {self.serial_port})")
+                except Exception:
+                    pass
+
+            if target_port not in available:
                 reconnect_attempts += 1
                 consecutive_errors += 1
                 err_msg = (
-                    f"Serial port {self.serial_port} not found (attempt {reconnect_attempts}); "
+                    f"Serial port {target_port} not found (attempt {reconnect_attempts}); "
                     f"reconnecting in {current_backoff:.1f}s"
                 )
                 print(f"[SERIAL] {err_msg}")
@@ -2839,7 +2857,7 @@ class LiveCollector:
             ser = None
             try:
                 ser = serial.Serial(
-                    port=self.serial_port,
+                    port=target_port,
                     baudrate=DEFAULT_BAUD_RATE,
                     timeout=SERIAL_TIMEOUT,
                 )
@@ -2861,7 +2879,7 @@ class LiveCollector:
                 if hasattr(ser, "reset_input_buffer"):
                     ser.reset_input_buffer()
 
-                print(f"[SERIAL] Connected to {self.serial_port}.")
+                print(f"[SERIAL] Connected to {target_port}.")
 
                 # 3. Probe Handshake (Stage 6.5.3)
                 try:

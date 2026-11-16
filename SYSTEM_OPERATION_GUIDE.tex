@@ -241,34 +241,39 @@ Connecting........_____....._____.....
 \end{enumerate}
 
 % =============================================================================
-\section{One-Click Frontend Deployment (\texttt{run\_frontend.bat})}
+\section{One-Click System and Frontend Launchers}
 % =============================================================================
 
-The project includes an automated, self-healing batch launcher: \texttt{run\_frontend.bat}.
+The project provides two automated batch action files to accommodate different operational needs:
+\begin{enumerate}
+    \item \textbf{\texttt{run\_system.bat}} (\textbf{Recommended for Live Demonstration}): Boots \textbf{BOTH} the background ingestion collector (connecting to the ESP32 serial port and TShark packet sniffer) and the Streamlit frontend in one go. Live readings appear on the screen immediately.
+    \item \textbf{\texttt{run\_frontend.bat}}: Boots \textbf{ONLY} the Streamlit SOC dashboard for viewing existing or historical database records.
+\end{enumerate}
 
-\subsection{How It Works Under the Hood}
-When executed, \texttt{run\_frontend.bat} performs the following sequential checks:
+\subsection{How \texttt{run\_system.bat} Works Under the Hood}
+When executed, \texttt{run\_system.bat} performs the following sequential automation:
 \begin{enumerate}[noitemsep]
-    \item \textbf{Project Root Anchoring}: Uses \texttt{\%~dp0} to guarantee correct working directory context regardless of whether it is double-clicked from Windows File Explorer or invoked via terminal.
-    \item \textbf{Virtual Environment Detection}: Searches for \texttt{.venv\textbackslash Scripts\textbackslash python.exe}. If absent, it smoothly falls back to the system Python installation.
+    \item \textbf{Project Root Anchoring}: Uses \texttt{\%~dp0} to guarantee correct working directory context regardless of invocation location.
+    \item \textbf{Virtual Environment Detection}: Searches for \texttt{.venv\textbackslash Scripts\textbackslash python.exe}. If absent, falls back to the system Python.
     \item \textbf{Autonomous Database Guard}: Checks if \texttt{data\textbackslash live\_monitoring.db} exists. If not found, it automatically calls \texttt{init\_live\_database(..., seed\_defaults=True)} to provision all 9 database tables and default MAC device profiles.
-    \item \textbf{Streamlit SOC Launch}: Executes \texttt{streamlit run src\textbackslash live\_dashboard.py -{}-server.port 8501}.
-    \item \textbf{Failure Trapping}: If any step exits abnormally, the window remains open with an explanatory error code rather than abruptly closing.
+    \item \textbf{Background Collector Launch}: Spawns \texttt{src\textbackslash live\_collector.py} in a companion terminal. The collector automatically discovers the ESP32 COM port, executes the sniffer probe handshake, and starts logging telemetry.
+    \item \textbf{Streamlit SOC Launch}: Executes \texttt{streamlit run src\textbackslash live\_dashboard.py -{}-server.port 8501} and opens the browser.
 \end{enumerate}
 
 \subsection{Execution Methods}
 
-\paragraph{Method A: Double-Click (Recommended for Operators)}
-Navigate to the project folder in Windows File Explorer and simply double-click:
+\paragraph{Method A: Complete Live System (Double-Click)}
+Simply double-click:
+\begin{center}
+\fbox{\textbf{\texttt{run\_system.bat}}}
+\end{center}
+Both the collector and the dashboard will initialize automatically, and live telemetry from the ESP32 will begin flowing into the dashboard within seconds.
+
+\paragraph{Method B: Frontend Only}
+If the collector is already running or you only want to inspect historical telemetry:
 \begin{center}
 \fbox{\textbf{\texttt{run\_frontend.bat}}}
 \end{center}
-
-\paragraph{Method B: Command Prompt / PowerShell}
-Open a terminal in the project directory and run:
-\begin{lstlisting}[language=bash, numbers=none]
-.\run_frontend.bat
-\end{lstlisting}
 
 \subsection{Accessing the Live SOC Dashboard}
 Once the terminal displays:

@@ -17,6 +17,7 @@ echo =========================================================================
 echo       IoT Wi-Fi Network Security and Anomaly Detection System
 echo                  SOC Live Monitoring Dashboard
 echo =========================================================================
+echo [TIP] For complete live hardware monitoring, use run_system.bat (starts both).
 echo.
 
 :: 1. Locate Python executable (check .venv with streamlit first, then system python, then .venv python)

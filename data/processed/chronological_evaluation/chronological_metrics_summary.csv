@@ -1,0 +1,6 @@
+Node_ID,Node_Type,Train_Windows_Normal,Test_Windows_Normal,Test_Windows_Anomaly,Total_Test_Windows,True_Positives_TP,False_Positives_FP,True_Negatives_TN,False_Negatives_FN,False_Positive_Rate_FPR,Recall_Detection_Rate,Precision,F1_Score,Accuracy,Sample_Size_Notes
+Node_5,Camera-like Traffic Generator,411,103,513,616,513,5,98,0,0.0485,1.0,0.9903,0.9952,0.9919,Adequate
+Node_3,Smart Plug,125,32,157,189,146,2,30,11,0.0625,0.9299,0.9865,0.9574,0.9312,Adequate
+Node_2,Smart Light,95,24,119,143,119,0,24,0,0.0,1.0,1.0,1.0,1.0,Adequate
+Node_1,Temperature Sensor,56,15,71,86,71,1,14,0,0.0667,1.0,0.9861,0.993,0.9884,Adequate
+Node_4,Motion Sensor,35,9,44,53,33,0,9,11,0.0,0.75,1.0,0.8571,0.7925,CAUTION: Very small normal test sample (N=9). FPR estimates have high variance.

@@ -1,0 +1,10 @@
+{
+  "status": "CHANNEL_UNAVAILABLE",
+  "esp32_channel": 6,
+  "hotspot_channel": null,
+  "interface_name": "Mobile Hotspot",
+  "esp32_source": "FIRMWARE_HANDSHAKE",
+  "run_id": 1,
+  "timestamp": 1794745022.6307886,
+  "explanation": "ESP32 sniffer hardware reported Channel 6, but Windows hotspot channel was unavailable."
+}

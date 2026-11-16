@@ -1,0 +1,703 @@
+{
+  "metadata": {
+    "test_stage": "Stage 5.4",
+    "component": "SpoofingDetector",
+    "timestamp_utc": "2026-11-09T16:59:01Z",
+    "total_scenarios": 31,
+    "passed_scenarios": 31,
+    "failed_scenarios": 0,
+    "pass_rate_pct": 100.0
+  },
+  "scenarios": [
+    {
+      "scenario": "A1_Rogue_Gateway_Impersonation_Detected",
+      "packet_count": 1,
+      "final_status": "SUSPICIOUS",
+      "final_severity": "HIGH",
+      "final_confidence": 0.9,
+      "verdict": "Gateway IP impersonation attempt",
+      "evidence": {
+        "verdict": "Gateway IP impersonation attempt",
+        "claimed_ip": "192.168.137.1",
+        "offending_mac": "00:11:22:33:44:55",
+        "authorized_gateway_mac": "36:6f:24:d2:34:3d",
+        "is_randomized_mac": false,
+        "explanation": "Host with MAC 00:11:22:33:44:55 emitted traffic claiming the Hotspot Gateway IP 192.168.137.1, but authorized gateway MAC is 36:6f:24:d2:34:3d."
+      },
+      "missing_fields": [],
+      "expected_status": "SUSPICIOUS",
+      "expected_severity": "HIGH",
+      "expected_verdict": "Gateway IP impersonation attempt",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "A2_Legitimate_Gateway_Traffic_Accepted",
+      "packet_count": 1,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Legitimate gateway traffic",
+      "evidence": {
+        "verdict": "Legitimate gateway traffic",
+        "claimed_ip": "192.168.137.1",
+        "mac": "36:6f:24:d2:34:3d",
+        "is_gateway": true,
+        "is_randomized_mac": true,
+        "explanation": "Observed MAC matches the verified Hotspot Gateway MAC."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "NONE",
+      "expected_verdict": "Legitimate gateway traffic",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "A3_Unconfigured_Gateway_MAC_Insufficient_Telemetry",
+      "packet_count": 1,
+      "final_status": "INSUFFICIENT_TELEMETRY",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Hotspot Gateway MAC address is unverified/unconfigured. Cannot determine if traffic claiming gateway IP 192.168.137.1 is genuine or spoofed.",
+      "evidence": {
+        "reason": "Hotspot Gateway MAC address is unverified/unconfigured. Cannot determine if traffic claiming gateway IP 192.168.137.1 is genuine or spoofed.",
+        "claimed_ip": "192.168.137.1",
+        "observed_mac": "00:11:22:33:44:55",
+        "is_randomized_mac": false
+      },
+      "missing_fields": [
+        "gateway_mac"
+      ],
+      "expected_status": "INSUFFICIENT_TELEMETRY",
+      "expected_severity": "NONE",
+      "expected_verdict": "Hotspot Gateway MAC address is unverified/unconfigured",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "A4_Gateway_MAC_Normalization_Hyphen_Uppercase",
+      "packet_count": 1,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Legitimate gateway traffic",
+      "evidence": {
+        "verdict": "Legitimate gateway traffic",
+        "claimed_ip": "192.168.137.1",
+        "mac": "36:6f:24:d2:34:3d",
+        "is_gateway": true,
+        "is_randomized_mac": true,
+        "explanation": "Observed MAC matches the verified Hotspot Gateway MAC."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "NONE",
+      "expected_verdict": "Legitimate gateway traffic",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "B1_Active_Host_IP_Conflict_Within_60s_HighSeverity",
+      "packet_count": 2,
+      "final_status": "SUSPICIOUS",
+      "final_severity": "HIGH",
+      "final_confidence": 0.85,
+      "verdict": "Conflicting IP-to-MAC binding detected",
+      "evidence": {
+        "verdict": "Conflicting IP-to-MAC binding detected",
+        "ip_address": "192.168.137.50",
+        "current_mac": "00:0c:29:ab:cd:ef",
+        "previous_mac": "ca:34:ea:92:d3:9e",
+        "elapsed_seconds": 10.0,
+        "conflict_packet_count": 1,
+        "current_is_randomized": false,
+        "previous_is_randomized": true,
+        "explanation": "IP 192.168.137.50 was active on baseline MAC ca:34:ea:92:d3:9e 10.0s ago, now observed on 00:0c:29:ab:cd:ef. Observed 1 conflicting packet(s)."
+      },
+      "missing_fields": [],
+      "expected_status": "SUSPICIOUS",
+      "expected_severity": "HIGH",
+      "expected_verdict": "Conflicting IP-to-MAC binding detected",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "B2_Active_Host_IP_Conflict_120s_MediumSeverity",
+      "packet_count": 2,
+      "final_status": "SUSPICIOUS",
+      "final_severity": "MEDIUM",
+      "final_confidence": 0.7,
+      "verdict": "Conflicting IP-to-MAC binding detected",
+      "evidence": {
+        "verdict": "Conflicting IP-to-MAC binding detected",
+        "ip_address": "192.168.137.50",
+        "current_mac": "00:0c:29:ab:cd:ef",
+        "previous_mac": "ca:34:ea:92:d3:9e",
+        "elapsed_seconds": 120.0,
+        "conflict_packet_count": 1,
+        "current_is_randomized": false,
+        "previous_is_randomized": true,
+        "explanation": "IP 192.168.137.50 was active on baseline MAC ca:34:ea:92:d3:9e 120.0s ago, now observed on 00:0c:29:ab:cd:ef. Observed 1 conflicting packet(s)."
+      },
+      "missing_fields": [],
+      "expected_status": "SUSPICIOUS",
+      "expected_severity": "MEDIUM",
+      "expected_verdict": "Conflicting IP-to-MAC binding detected",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "C1_DHCP_Lease_Transition_Pending_1_Packet",
+      "packet_count": 2,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Pending IP-to-MAC lease transition",
+      "evidence": {
+        "verdict": "Pending IP-to-MAC lease transition",
+        "ip_address": "192.168.137.50",
+        "current_mac": "e6:2e:db:73:1c:25",
+        "previous_mac": "ca:34:ea:92:d3:9e",
+        "candidate_packet_count": 1,
+        "required_packets": 2,
+        "explanation": "Previous baseline MAC ca:34:ea:92:d3:9e aged out (305.0s silence). Candidate e6:2e:db:73:1c:25 observed (1/2 packets); awaiting confirmation."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "NONE",
+      "expected_verdict": "Pending IP-to-MAC lease transition",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "C2_DHCP_Lease_Transition_Confirmed_Handover",
+      "packet_count": 3,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Legitimate IP-to-MAC binding handover confirmed",
+      "evidence": {
+        "verdict": "Legitimate IP-to-MAC binding handover confirmed",
+        "ip_address": "192.168.137.50",
+        "current_mac": "e6:2e:db:73:1c:25",
+        "previous_mac": "ca:34:ea:92:d3:9e",
+        "elapsed_since_previous_mac": 306.0,
+        "confirmed_packet_count": 2,
+        "explanation": "Previous baseline MAC ca:34:ea:92:d3:9e has aged out (306.0s silence). New MAC e6:2e:db:73:1c:25 confirmed across 2 packets; binding safely updated."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "NONE",
+      "expected_verdict": "Legitimate IP-to-MAC binding handover confirmed",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "C3_Consistent_Identity_Post_Handover",
+      "packet_count": 4,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Consistent identity binding",
+      "evidence": {
+        "verdict": "Consistent identity binding",
+        "mac": "e6:2e:db:73:1c:25",
+        "ip": "192.168.137.50",
+        "is_registered": true,
+        "is_randomized_mac": true,
+        "explanation": "No identity clash or address conflict observed."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "NONE",
+      "expected_verdict": "Consistent identity binding",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "D1_Randomized_MAC_Private_Addressing_NoAlert",
+      "packet_count": 1,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Consistent identity binding",
+      "evidence": {
+        "verdict": "Consistent identity binding",
+        "mac": "da:34:ea:92:d3:9f",
+        "ip": "192.168.137.77",
+        "is_registered": true,
+        "is_randomized_mac": true,
+        "explanation": "No identity clash or address conflict observed."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "NONE",
+      "expected_verdict": "Consistent identity binding",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "D2_Multiple_Randomized_MACs_Distinct_IPs",
+      "packet_count": 4,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Consistent identity binding",
+      "evidence": {
+        "verdict": "Consistent identity binding",
+        "mac": "ee:11:22:33:44:04",
+        "ip": "192.168.137.103",
+        "is_registered": true,
+        "is_randomized_mac": true,
+        "explanation": "No identity clash or address conflict observed."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "NONE",
+      "expected_verdict": "Consistent identity binding",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "D3_Unregistered_MAC_Produces_Info_NoAttack",
+      "packet_count": 1,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "INFO",
+      "final_confidence": 0.0,
+      "verdict": "Consistent identity binding",
+      "evidence": {
+        "verdict": "Consistent identity binding",
+        "mac": "ca:34:ea:92:d3:9e",
+        "ip": "192.168.137.88",
+        "is_registered": false,
+        "is_randomized_mac": true,
+        "explanation": "No identity clash or address conflict observed."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "INFO",
+      "expected_verdict": "Consistent identity binding",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "E1_DHCP_Discover_0_0_0_0_Excluded",
+      "packet_count": 1,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Unassigned or non-unicast source address",
+      "evidence": {
+        "verdict": "Unassigned or non-unicast source address",
+        "ip": "0.0.0.0",
+        "mac": "ca:34:ea:92:d3:9e",
+        "is_randomized_mac": true,
+        "explanation": "Source IP 0.0.0.0 is an unassigned, broadcast, or multicast address (e.g. initial DHCP negotiation); excluded from IP-to-MAC binding."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "NONE",
+      "expected_verdict": "Unassigned or non-unicast source address",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "E2_Verify_No_Binding_For_0_0_0_0",
+      "packet_count": 1,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Verified 0.0.0.0 absent from binding table",
+      "evidence": {
+        "binding_table_keys": []
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "NONE",
+      "expected_verdict": "Verified 0.0.0.0 absent from binding table",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "F1_Broadcast_255_255_255_255_Excluded",
+      "packet_count": 1,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Unassigned or non-unicast source address",
+      "evidence": {
+        "verdict": "Unassigned or non-unicast source address",
+        "ip": "255.255.255.255",
+        "mac": "ca:34:ea:92:d3:9e",
+        "is_randomized_mac": true,
+        "explanation": "Source IP 255.255.255.255 is an unassigned, broadcast, or multicast address (e.g. initial DHCP negotiation); excluded from IP-to-MAC binding."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": null,
+      "expected_verdict": "Unassigned or non-unicast source address",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "F2_Multicast_224_0_0_251_Excluded",
+      "packet_count": 1,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Unassigned or non-unicast source address",
+      "evidence": {
+        "verdict": "Unassigned or non-unicast source address",
+        "ip": "224.0.0.251",
+        "mac": "ca:34:ea:92:d3:9e",
+        "is_randomized_mac": true,
+        "explanation": "Source IP 224.0.0.251 is an unassigned, broadcast, or multicast address (e.g. initial DHCP negotiation); excluded from IP-to-MAC binding."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": null,
+      "expected_verdict": "Unassigned or non-unicast source address",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "F3_Network_Address_192_168_137_0_Excluded",
+      "packet_count": 1,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Unassigned or non-unicast source address",
+      "evidence": {
+        "verdict": "Unassigned or non-unicast source address",
+        "ip": "192.168.137.0",
+        "mac": "ca:34:ea:92:d3:9e",
+        "is_randomized_mac": true,
+        "explanation": "Source IP 192.168.137.0 is an unassigned, broadcast, or multicast address (e.g. initial DHCP negotiation); excluded from IP-to-MAC binding."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": null,
+      "expected_verdict": "Unassigned or non-unicast source address",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "F4_Subnet_Broadcast_192_168_137_255_Excluded",
+      "packet_count": 1,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Unassigned or non-unicast source address",
+      "evidence": {
+        "verdict": "Unassigned or non-unicast source address",
+        "ip": "192.168.137.255",
+        "mac": "ca:34:ea:92:d3:9e",
+        "is_randomized_mac": true,
+        "explanation": "Source IP 192.168.137.255 is an unassigned, broadcast, or multicast address (e.g. initial DHCP negotiation); excluded from IP-to-MAC binding."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": null,
+      "expected_verdict": "Unassigned or non-unicast source address",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "G1_Transient_Conflict_Protection_And_Cooldown_Lifecycle",
+      "packet_count": 5,
+      "final_status": "SUSPICIOUS",
+      "final_severity": "MEDIUM",
+      "final_confidence": 0.7,
+      "verdict": "Conflicting IP-to-MAC binding detected",
+      "evidence": {
+        "verdict": "Conflicting IP-to-MAC binding detected",
+        "ip_address": "192.168.137.50",
+        "current_mac": "00:0c:29:ab:cd:ef",
+        "previous_mac": "ca:34:ea:92:d3:9e",
+        "elapsed_seconds": 63.0,
+        "conflict_packet_count": 3,
+        "current_is_randomized": false,
+        "previous_is_randomized": true,
+        "explanation": "IP 192.168.137.50 was active on baseline MAC ca:34:ea:92:d3:9e 63.0s ago, now observed on 00:0c:29:ab:cd:ef. Observed 3 conflicting packet(s)."
+      },
+      "missing_fields": [],
+      "expected_status": "SUSPICIOUS",
+      "expected_severity": "MEDIUM",
+      "expected_verdict": "Conflicting IP-to-MAC binding detected",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "H1_Boundary_ConflictWindow_Exact_60_0s_HighSeverity",
+      "packet_count": 2,
+      "final_status": "SUSPICIOUS",
+      "final_severity": "HIGH",
+      "final_confidence": 0.85,
+      "verdict": "Conflicting IP-to-MAC binding detected",
+      "evidence": {
+        "verdict": "Conflicting IP-to-MAC binding detected",
+        "ip_address": "192.168.137.50",
+        "current_mac": "00:0c:29:ab:cd:ef",
+        "previous_mac": "ca:34:ea:92:d3:9e",
+        "elapsed_seconds": 60.0,
+        "conflict_packet_count": 1,
+        "current_is_randomized": false,
+        "previous_is_randomized": true,
+        "explanation": "IP 192.168.137.50 was active on baseline MAC ca:34:ea:92:d3:9e 60.0s ago, now observed on 00:0c:29:ab:cd:ef. Observed 1 conflicting packet(s)."
+      },
+      "missing_fields": [],
+      "expected_status": "SUSPICIOUS",
+      "expected_severity": "HIGH",
+      "expected_verdict": "Conflicting IP-to-MAC binding detected",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "H2_Boundary_ConflictWindow_60_1s_MediumSeverity",
+      "packet_count": 2,
+      "final_status": "SUSPICIOUS",
+      "final_severity": "MEDIUM",
+      "final_confidence": 0.7,
+      "verdict": "Conflicting IP-to-MAC binding detected",
+      "evidence": {
+        "verdict": "Conflicting IP-to-MAC binding detected",
+        "ip_address": "192.168.137.50",
+        "current_mac": "00:0c:29:ab:cd:ef",
+        "previous_mac": "ca:34:ea:92:d3:9e",
+        "elapsed_seconds": 60.1,
+        "conflict_packet_count": 1,
+        "current_is_randomized": false,
+        "previous_is_randomized": true,
+        "explanation": "IP 192.168.137.50 was active on baseline MAC ca:34:ea:92:d3:9e 60.1s ago, now observed on 00:0c:29:ab:cd:ef. Observed 1 conflicting packet(s)."
+      },
+      "missing_fields": [],
+      "expected_status": "SUSPICIOUS",
+      "expected_severity": "MEDIUM",
+      "expected_verdict": "Conflicting IP-to-MAC binding detected",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "H3_Boundary_BindingExpiry_Exact_300_0s_Suspicious",
+      "packet_count": 2,
+      "final_status": "SUSPICIOUS",
+      "final_severity": "MEDIUM",
+      "final_confidence": 0.7,
+      "verdict": "Conflicting IP-to-MAC binding detected",
+      "evidence": {
+        "verdict": "Conflicting IP-to-MAC binding detected",
+        "ip_address": "192.168.137.50",
+        "current_mac": "00:0c:29:ab:cd:ef",
+        "previous_mac": "ca:34:ea:92:d3:9e",
+        "elapsed_seconds": 300.0,
+        "conflict_packet_count": 1,
+        "current_is_randomized": false,
+        "previous_is_randomized": true,
+        "explanation": "IP 192.168.137.50 was active on baseline MAC ca:34:ea:92:d3:9e 300.0s ago, now observed on 00:0c:29:ab:cd:ef. Observed 1 conflicting packet(s)."
+      },
+      "missing_fields": [],
+      "expected_status": "SUSPICIOUS",
+      "expected_severity": "MEDIUM",
+      "expected_verdict": "Conflicting IP-to-MAC binding detected",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "H4_Boundary_BindingExpiry_300_1s_TransitionPending",
+      "packet_count": 2,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Pending IP-to-MAC lease transition",
+      "evidence": {
+        "verdict": "Pending IP-to-MAC lease transition",
+        "ip_address": "192.168.137.50",
+        "current_mac": "00:0c:29:ab:cd:ef",
+        "previous_mac": "ca:34:ea:92:d3:9e",
+        "candidate_packet_count": 1,
+        "required_packets": 2,
+        "explanation": "Previous baseline MAC ca:34:ea:92:d3:9e aged out (300.1s silence). Candidate 00:0c:29:ab:cd:ef observed (1/2 packets); awaiting confirmation."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "NONE",
+      "expected_verdict": "Pending IP-to-MAC lease transition",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "H5_Candidate_Stale_Tracker_Reset_After_300s_Silence",
+      "packet_count": 3,
+      "final_status": "NO_EVIDENCE",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Pending IP-to-MAC lease transition",
+      "evidence": {
+        "verdict": "Pending IP-to-MAC lease transition",
+        "ip_address": "192.168.137.50",
+        "current_mac": "00:0c:29:ab:cd:ef",
+        "previous_mac": "ca:34:ea:92:d3:9e",
+        "candidate_packet_count": 1,
+        "required_packets": 2,
+        "explanation": "Previous baseline MAC ca:34:ea:92:d3:9e aged out (306.0s silence). Candidate 00:0c:29:ab:cd:ef observed (1/2 packets); awaiting confirmation."
+      },
+      "missing_fields": [],
+      "expected_status": "NO_EVIDENCE",
+      "expected_severity": "NONE",
+      "expected_verdict": "Pending IP-to-MAC lease transition",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "I1_Two_Independent_IP_Conflicts_Isolated",
+      "packet_count": 4,
+      "final_status": "SUSPICIOUS",
+      "final_severity": "HIGH",
+      "final_confidence": 0.85,
+      "verdict": "Conflicting IP-to-MAC binding detected",
+      "evidence": {
+        "ip1_conflict": {
+          "verdict": "Conflicting IP-to-MAC binding detected",
+          "ip_address": "192.168.137.50",
+          "current_mac": "aa:aa:aa:aa:aa:aa",
+          "previous_mac": "11:11:11:11:11:11",
+          "elapsed_seconds": 1.0,
+          "conflict_packet_count": 1,
+          "current_is_randomized": true,
+          "previous_is_randomized": false,
+          "explanation": "IP 192.168.137.50 was active on baseline MAC 11:11:11:11:11:11 1.0s ago, now observed on aa:aa:aa:aa:aa:aa. Observed 1 conflicting packet(s)."
+        },
+        "ip2_conflict": {
+          "verdict": "Conflicting IP-to-MAC binding detected",
+          "ip_address": "192.168.137.60",
+          "current_mac": "bb:bb:bb:bb:bb:bb",
+          "previous_mac": "22:22:22:22:22:22",
+          "elapsed_seconds": 1.0,
+          "conflict_packet_count": 1,
+          "current_is_randomized": true,
+          "previous_is_randomized": true,
+          "explanation": "IP 192.168.137.60 was active on baseline MAC 22:22:22:22:22:22 1.0s ago, now observed on bb:bb:bb:bb:bb:bb. Observed 1 conflicting packet(s)."
+        }
+      },
+      "missing_fields": [],
+      "expected_status": "SUSPICIOUS",
+      "expected_severity": "HIGH",
+      "expected_verdict": "Conflicting IP-to-MAC binding detected",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "I2_Third_Rogue_MAC_Independent_Candidate_Tracking",
+      "packet_count": 5,
+      "final_status": "SUSPICIOUS",
+      "final_severity": "HIGH",
+      "final_confidence": 0.85,
+      "verdict": "Conflicting IP-to-MAC binding detected",
+      "evidence": {
+        "verdict": "Conflicting IP-to-MAC binding detected",
+        "ip_address": "192.168.137.50",
+        "current_mac": "cc:cc:cc:cc:cc:cc",
+        "previous_mac": "11:11:11:11:11:11",
+        "elapsed_seconds": 2.0,
+        "conflict_packet_count": 1,
+        "current_is_randomized": false,
+        "previous_is_randomized": false,
+        "explanation": "IP 192.168.137.50 was active on baseline MAC 11:11:11:11:11:11 2.0s ago, now observed on cc:cc:cc:cc:cc:cc. Observed 1 conflicting packet(s)."
+      },
+      "missing_fields": [],
+      "expected_status": "SUSPICIOUS",
+      "expected_severity": "HIGH",
+      "expected_verdict": "Conflicting IP-to-MAC binding detected",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "J1_Missing_Source_IP_Insufficient_Telemetry",
+      "packet_count": 1,
+      "final_status": "INSUFFICIENT_TELEMETRY",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Packet lacks eth_src or ip_src",
+      "evidence": {
+        "reason": "Packet lacks eth_src or ip_src"
+      },
+      "missing_fields": [
+        "ip_src"
+      ],
+      "expected_status": "INSUFFICIENT_TELEMETRY",
+      "expected_severity": null,
+      "expected_verdict": null,
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "J2_Missing_Ethernet_Source_MAC_Insufficient_Telemetry",
+      "packet_count": 1,
+      "final_status": "INSUFFICIENT_TELEMETRY",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Packet lacks eth_src or ip_src",
+      "evidence": {
+        "reason": "Packet lacks eth_src or ip_src"
+      },
+      "missing_fields": [
+        "eth_src"
+      ],
+      "expected_status": "INSUFFICIENT_TELEMETRY",
+      "expected_severity": null,
+      "expected_verdict": null,
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "J3_Missing_Both_IP_And_MAC_Insufficient_Telemetry",
+      "packet_count": 1,
+      "final_status": "INSUFFICIENT_TELEMETRY",
+      "final_severity": "NONE",
+      "final_confidence": 0.0,
+      "verdict": "Packet lacks eth_src or ip_src",
+      "evidence": {
+        "reason": "Packet lacks eth_src or ip_src"
+      },
+      "missing_fields": [
+        "eth_src",
+        "ip_src"
+      ],
+      "expected_status": "INSUFFICIENT_TELEMETRY",
+      "expected_severity": null,
+      "expected_verdict": null,
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "K1_LiveCollector_Spoofing_Cooldown_And_Attribution",
+      "packet_count": 4,
+      "final_status": "SUSPICIOUS",
+      "final_severity": "HIGH",
+      "final_confidence": 0.85,
+      "verdict": "Verified persistence, cooldown suppression, cooldown expiry, and MAC independence",
+      "evidence": {
+        "ins_k1": 1,
+        "ins_k2": 0,
+        "ins_k3": 1,
+        "ins_k4": 1,
+        "total_rows": 3
+      },
+      "missing_fields": [],
+      "expected_status": "SUSPICIOUS",
+      "expected_severity": "HIGH",
+      "expected_verdict": "Verified persistence",
+      "step_errors": [],
+      "passed": true
+    },
+    {
+      "scenario": "L1_Real_PCAP_Replay_Spoofing",
+      "pcap_file": "hotspot_two_phone_test.pcapng",
+      "total_packets": 2329,
+      "false_positive_count": 0,
+      "fp_details": [],
+      "passed": true
+    }
+  ]
+}

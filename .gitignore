@@ -1,3 +1,48 @@
+# Python bytecode and caches
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Environment files and credentials (Zero secrets in Git)
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+secrets.toml
+*.key
+*.pem
+*.token
+
+# Local SQLite databases and write-ahead logs (Zero production databases in Git)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.db_backup*
+data/test_*.db
+*.db
+*.db-wal
+*.db-shm
+
+# Network captures and packet dumps (Zero raw PCAP in Git)
+*.pcap
+*.pcapng
+data/*.pcap
+data/*.pcapng
+
+# Operating system and editor artifacts
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.orig
+*.orig_*
+scratch/*.docx
+
+
+# Firmware build artifacts
+firmware/build/
+*.elf
+*.map
+

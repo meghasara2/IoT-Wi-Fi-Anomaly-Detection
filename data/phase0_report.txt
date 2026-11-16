@@ -1,0 +1,36 @@
+PHASE 0 AUDIT & BACKUP VERIFICATION REPORT
+=========================================
+Timestamp: 2026-10-11T11:21:24.685062
+
+1. Original Database: C:\Users\megha\OneDrive\Desktop\IoT_WiFi_Anomaly_Detection\data\iot_anomaly.db
+   Size: 495616 bytes
+   Integrity: ok
+   Tables: anomaly_predictions, datasets, feature_windows, nodes, prediction_runs, sqlite_sequence, traffic_observations
+   Counts: {'anomaly_predictions': 1087, 'datasets': 2, 'feature_windows': 1809, 'nodes': 5, 'prediction_runs': 2, 'traffic_observations': 9073}
+
+2. Verified Backup: C:\Users\megha\OneDrive\Desktop\IoT_WiFi_Anomaly_Detection\data\iot_anomaly_backup_20261011_112124.db
+   Backup Size: 495616 bytes
+   Integrity: ok
+   Table match: Exact
+   Row count match: Exact
+
+3. Python Environment:
+   Python Executable: C:\Users\megha\AppData\Local\Programs\Python\Python311\python.exe
+   Python Version: 3.11.9
+   Virtual Env Active: False
+   Package Versions:
+     - pandas: 2.2.2
+     - plotly: 6.5.0
+     - streamlit: 1.52.1
+     - scikit-learn: 1.8.0
+     - numpy: 2.4.6
+     - joblib: 1.5.3
+     - scipy: 1.17.0
+     - python-pptx: 1.0.2
+     - sqlite3: 3.45.1
+
+4. requirements.txt Analysis:
+   Listed: ['pandas', 'plotly', 'streamlit']
+   Missing Critical Dependencies: ['scikit-learn', 'numpy']
+
+Status: PHASE 0 PASSED WITH ZERO ERRORS.

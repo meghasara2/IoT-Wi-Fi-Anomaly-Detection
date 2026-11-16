@@ -1,0 +1,10 @@
+{
+  "status": "INTERFACE_UNAVAILABLE",
+  "esp32_channel": null,
+  "hotspot_channel": null,
+  "interface_name": null,
+  "esp32_source": "UNAVAILABLE",
+  "run_id": 8,
+  "timestamp": 1794804070.062032,
+  "explanation": "Hotspot interface 'Local Area Connection* 10' not found in Windows WLAN interfaces (physical Wi-Fi ignored)."
+}

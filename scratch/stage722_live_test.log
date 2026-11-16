@@ -1,0 +1,129 @@
+======================================================================
+STAGE 7.2.2: CONTROLLED 180-SECOND LIVE INTEGRATION TEST RUNNER
+======================================================================
+Target Database: C:\Users\megha\OneDrive\Desktop\IoT_WiFi_Anomaly_Detection\data\test_stage722_live_monitoring.db
+Serial Port: COM6 | Interface Index: 5 | Gateway MAC: 36:6f:24:d2:34:3d
+Planned Duration: 180 seconds
+Start Time (UTC): 2026-11-10T15:47:49.488566+00:00
+[DETECTOR] Frozen dual detector loaded from: time_1s_session1_pcap_features_uplink.csv
+           Primary offset: -0.581180
+           Timing offset:  -0.617487
+           Training samples: 112
+[COLLECTOR] Device registry refreshed: 3 devices (was 2)
+[COLLECTOR] Starting run_id=1 | Interface=5 | Serial=COM6
+[COLLECTOR] Hotspot Gateway MAC verified: 36:6f:24:d2:34:3d
+[NET] TShark packet stream started.
+[COLLECTOR] Both threads started. Press Ctrl+C to stop.
+
+[RUNNER] Collector successfully started. Entering 180s monitoring loop...
+
+[SERIAL] Connected to COM6.
+[SERIAL][RAW] ot:0x17 (SPI_FAST_FLASH_BOOT)
+[SERIAL][RAW] configsip: 0, SPIWP:0xee
+[SERIAL][RAW] clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+[SERIAL][RAW] mode:DIO, clock div:1
+[SERIAL][RAW] load:0x3fff0030,len:4980
+[SERIAL][RAW] load:0x40078000,len:16612
+[SERIAL][RAW] load:0x40080400,len:3480
+[SERIAL][RAW] entry 0x400805b4
+[SERIAL][INFO] {"status":"ESP32_TELEMETRY_INITIALIZED","baud":115200}
+[SERIAL][INFO] Sniffer session active: boot_id=4199123527, nonce=3842178638
+[T+ 10.7s] Status: RUNNING | Pkts:   3145 | Windows:   11 | Sensors:    5 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+ 21.0s] Status: RUNNING | Pkts:   6155 | Windows:   24 | Sensors:   10 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+ 31.2s] Status: RUNNING | Pkts:  13712 | Windows:   37 | Sensors:   15 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+ 41.7s] Status: RUNNING | Pkts:  17151 | Windows:   50 | Sensors:   20 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+ 51.9s] Status: RUNNING | Pkts:  20086 | Windows:   60 | Sensors:   26 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+ 62.2s] Status: RUNNING | Pkts:  23081 | Windows:   72 | Sensors:   31 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+ 72.7s] Status: RUNNING | Pkts:  26595 | Windows:   84 | Sensors:   36 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+ 83.1s] Status: RUNNING | Pkts:  29870 | Windows:   95 | Sensors:   41 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+ 93.4s] Status: RUNNING | Pkts:  33170 | Windows:  113 | Sensors:   46 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+103.8s] Status: RUNNING | Pkts:  36545 | Windows:  128 | Sensors:   52 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+114.1s] Status: RUNNING | Pkts:  38790 | Windows:  139 | Sensors:   57 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+124.3s] Status: RUNNING | Pkts:  48873 | Windows:  155 | Sensors:   62 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+134.5s] Status: RUNNING | Pkts:  57004 | Windows:  172 | Sensors:   67 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+144.9s] Status: RUNNING | Pkts:  60366 | Windows:  185 | Sensors:   72 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+155.2s] Status: RUNNING | Pkts:  63738 | Windows:  202 | Sensors:   77 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+165.4s] Status: RUNNING | Pkts:  67242 | Windows:  218 | Sensors:   82 | NetAlive: True | SerConn: True | BootID: 4199123527
+[T+175.8s] Status: RUNNING | Pkts:  70597 | Windows:  234 | Sensors:   88 | NetAlive: True | SerConn: True | BootID: 4199123527
+
+[RUNNER] Requesting graceful collector shutdown after 180.89s...
+
+[COLLECTOR] Stopping: Stage 7.2.2 controlled 180s test finished
+[NET] TShark stream stopped.
+[SERIAL] Serial thread stopped.
+
+[COLLECTOR] Final statistics:
+  packets_parsed: 71967
+  windows_emitted: 239
+  alerts_generated: 190
+  sensor_records: 90
+  unknown_devices_seen: 0
+  attack_evaluations: 1195
+  attack_events_flagged: 0
+  attack_events_cooldown_suppressed: 0
+  wifi_mgmt_events_parsed: 0
+  wifi_mgmt_events_pushed: 0
+  wifi_mgmt_queue_dropped: 0
+  wifi_mgmt_malformed: 0
+  wifi_mgmt_summaries_parsed: 180
+  wifi_mgmt_duplicate_events: 0
+  wifi_mgmt_stale_events: 0
+  sniffer_probe_requests_sent: 1
+  sniffer_status_responses_received: 1
+  sniffer_stale_probe_responses_dropped: 0
+  sniffer_nonce_mismatches: 0
+  serial_raw_lines: 8
+  sensor_payloads_invalid: 0
+  wifi_mgmt_events_drained: 0
+  wifi_mgmt_deauth_events_mapped: 0
+  wifi_mgmt_disassoc_events_mapped: 0
+  wifi_mgmt_dropped_unsupported_subtype: 0
+  wifi_mgmt_exceptions: 0
+  db_transient_write_retries: 0
+  db_window_write_failures: 0
+  db_sensor_write_failures: 0
+  packets_dropped_overflow: 723
+
+======================================================================
+STAGE 7.2.2 LIVE EXECUTION SUMMARY
+======================================================================
+Start Time (UTC): 2026-11-10T15:47:49.488566+00:00
+End Time (UTC):   2026-11-10T15:50:50.372358+00:00
+Actual Duration:  180.89 seconds
+Run ID:           1
+Final Status:     STOPPED
+Final Stop Reason: Stage 7.2.2 controlled 180s test finished
+
+Detailed Internal Collector Stats:
+  alerts_generated                        : 190
+  attack_evaluations                      : 1195
+  attack_events_cooldown_suppressed       : 0
+  attack_events_flagged                   : 0
+  db_sensor_write_failures                : 0
+  db_transient_write_retries              : 0
+  db_window_write_failures                : 0
+  packets_dropped_overflow                : 723
+  packets_parsed                          : 71967
+  sensor_payloads_invalid                 : 0
+  sensor_records                          : 90
+  serial_raw_lines                        : 8
+  sniffer_nonce_mismatches                : 0
+  sniffer_probe_requests_sent             : 1
+  sniffer_stale_probe_responses_dropped   : 0
+  sniffer_status_responses_received       : 1
+  unknown_devices_seen                    : 0
+  wifi_mgmt_deauth_events_mapped          : 0
+  wifi_mgmt_disassoc_events_mapped        : 0
+  wifi_mgmt_dropped_unsupported_subtype   : 0
+  wifi_mgmt_duplicate_events              : 0
+  wifi_mgmt_events_drained                : 0
+  wifi_mgmt_events_parsed                 : 0
+  wifi_mgmt_events_pushed                 : 0
+  wifi_mgmt_exceptions                    : 0
+  wifi_mgmt_malformed                     : 0
+  wifi_mgmt_queue_dropped                 : 0
+  wifi_mgmt_stale_events                  : 0
+  wifi_mgmt_summaries_parsed              : 180
+  windows_emitted                         : 239
+======================================================================
+

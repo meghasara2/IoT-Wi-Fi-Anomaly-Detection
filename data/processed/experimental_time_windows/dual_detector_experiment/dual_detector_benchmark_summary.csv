@@ -1,0 +1,21 @@
+architecture,scenario,is_anomaly_ground_truth,scenario_sample_count,flagged_outliers,flagged_pct,scenario_TP,scenario_FP,scenario_TN,scenario_FN,timing_unavailable_count,overall_TP,overall_FP,overall_TN,overall_FN,overall_precision,overall_recall,overall_f1,feature_count,features_used
+Primary (3-feature),erratic_iat_dispersion,1,20,0,0.0,0,0,0,20,0,40,0,70,20,1.0,0.6667,0.8,3,packet_rate;mean_packet_size;packet_size_std
+Primary (3-feature),high_rate_burst,1,20,20,100.0,20,0,0,0,0,40,0,70,20,1.0,0.6667,0.8,3,packet_rate;mean_packet_size;packet_size_std
+Primary (3-feature),jumbo_payload_extreme,1,20,20,100.0,20,0,0,0,0,40,0,70,20,1.0,0.6667,0.8,3,packet_rate;mean_packet_size;packet_size_std
+Primary (3-feature),normal_like,0,50,0,0.0,0,0,50,0,0,40,0,70,20,1.0,0.6667,0.8,3,packet_rate;mean_packet_size;packet_size_std
+Primary (3-feature),single_packet_quiescent,0,20,0,0.0,0,0,20,0,20,40,0,70,20,1.0,0.6667,0.8,3,packet_rate;mean_packet_size;packet_size_std
+Timing (gated N>=3),erratic_iat_dispersion,1,20,20,100.0,20,0,0,0,0,20,0,70,40,1.0,0.3333,0.5,2,mean_IAT;IAT_std
+Timing (gated N>=3),high_rate_burst,1,20,0,0.0,0,0,0,20,0,20,0,70,40,1.0,0.3333,0.5,2,mean_IAT;IAT_std
+Timing (gated N>=3),jumbo_payload_extreme,1,20,0,0.0,0,0,0,20,0,20,0,70,40,1.0,0.3333,0.5,2,mean_IAT;IAT_std
+Timing (gated N>=3),normal_like,0,50,0,0.0,0,0,50,0,0,20,0,70,40,1.0,0.3333,0.5,2,mean_IAT;IAT_std
+Timing (gated N>=3),single_packet_quiescent,0,20,0,0.0,0,0,20,0,20,20,0,70,40,1.0,0.3333,0.5,2,mean_IAT;IAT_std
+Existing 5-feature,erratic_iat_dispersion,1,20,17,85.0,17,0,0,3,0,21,18,52,39,0.5385,0.35,0.4242,7,packet_rate;mean_packet_size;packet_size_std;mean_IAT_imputed;IAT_std_imputed;mean_iat_missing;iat_std_missing
+Existing 5-feature,high_rate_burst,1,20,4,20.0,4,0,0,16,0,21,18,52,39,0.5385,0.35,0.4242,7,packet_rate;mean_packet_size;packet_size_std;mean_IAT_imputed;IAT_std_imputed;mean_iat_missing;iat_std_missing
+Existing 5-feature,jumbo_payload_extreme,1,20,0,0.0,0,0,0,20,0,21,18,52,39,0.5385,0.35,0.4242,7,packet_rate;mean_packet_size;packet_size_std;mean_IAT_imputed;IAT_std_imputed;mean_iat_missing;iat_std_missing
+Existing 5-feature,normal_like,0,50,0,0.0,0,0,50,0,0,21,18,52,39,0.5385,0.35,0.4242,7,packet_rate;mean_packet_size;packet_size_std;mean_IAT_imputed;IAT_std_imputed;mean_iat_missing;iat_std_missing
+Existing 5-feature,single_packet_quiescent,0,20,18,90.0,0,18,2,0,20,21,18,52,39,0.5385,0.35,0.4242,7,packet_rate;mean_packet_size;packet_size_std;mean_IAT_imputed;IAT_std_imputed;mean_iat_missing;iat_std_missing
+Dual Combined,erratic_iat_dispersion,1,20,20,100.0,20,0,0,0,0,60,0,70,0,1.0,1.0,1.0,5,Primary[3] + GatedTiming[2]
+Dual Combined,high_rate_burst,1,20,20,100.0,20,0,0,0,0,60,0,70,0,1.0,1.0,1.0,5,Primary[3] + GatedTiming[2]
+Dual Combined,jumbo_payload_extreme,1,20,20,100.0,20,0,0,0,0,60,0,70,0,1.0,1.0,1.0,5,Primary[3] + GatedTiming[2]
+Dual Combined,normal_like,0,50,0,0.0,0,0,50,0,0,60,0,70,0,1.0,1.0,1.0,5,Primary[3] + GatedTiming[2]
+Dual Combined,single_packet_quiescent,0,20,0,0.0,0,0,20,0,20,60,0,70,0,1.0,1.0,1.0,5,Primary[3] + GatedTiming[2]

@@ -1,0 +1,2 @@
+session_name,n_windows,client_count,packet_rate_median,packet_rate_mean,timing_active_count,timing_unavail_count,timing_unavail_pct,primary_outlier_count,timing_outlier_count,dual_outlier_count,dual_outlier_pct,sensor_aligned,sensor_match_rate_pct
+session6_10min,570,2,9.0,25.526315789473685,427,143,25.09,62,23,85,14.91,True,100.0

@@ -1,0 +1,116 @@
+<USER_REQUEST>
+# MASTER PROMPT — FINAL ACADEMIC PROJECT REPORT GENERATION
+
+## Project: AI-Assisted IoT Wi-Fi Network Security and Anomaly Detection
+### Application: IoT Network Guard — Dual-Detector SOC Console
+
+Act as a senior academic technical writer, IoT security researcher, machine learning engineer, and project documentation specialist.
+
+Your task is to prepare a complete, professionally written B.Tech final-year project report using the college-provided Word document template.
+
+This is an academic submission. The report must be technically accurate, academically defensible, detailed, and based on the actual implementation in the project repository.
+
+Do not produce a generic IoT cybersecurity report.
+
+You must understand the actual project before writing.
+
+---
+
+# 1. INPUT DOCUMENTS
+
+Locate and inspect the following:
+
+1. `Project_Report_CCNS.docx` — official college report template.
+2. Existing project documentation and previous report drafts.
+3. `README.md`.
+4. `scratch/final_project_completion_report.md`, if present.
+5. `scratch/final_security_audit.md`, if present.
+6. `scratch/final_project_completion_audit.md`, if present.
+7. Latest test reports and deployment verification reports.
+8. Actual Python source files.
+9. Machine learning training, evaluation and inference code.
+10. ESP32 firmware.
+11. Database schemas and SQL migrations.
+12. Dashboard implementation.
+
+Do not assume that older reports contain the latest implementation.
+
+Use the actual source code and latest verified reports as the primary technical evidence.
+
+---
+
+# 2. PROJECT IDENTITY
+
+Project title:
+
+AI-ASSISTED IoT WI-FI NETWORK SECURITY AND ANOMALY DETECTION
+
+Application name:
+
+IoT Network Guard — Dual-Detector SOC Console
+
+The project integrates:
+
+- IoT-based network monitoring.
+- Wi-Fi traffic observation.
+- ESP32-based sensor telemetry.
+- Python-based packet processing.
+- Machine learning-based anomaly detection.
+- Dual-detector security architecture.
+- Attack event identification.
+- SQLite-based local data persistence.
+- Durable
+<truncated 16562 bytes>
+FINAL PAGE-BY-PAGE QUALITY CHECK
+
+Render the complete document to PDF.
+
+Inspect every page.
+
+Check:
+- Text overflow.
+- Missing paragraphs.
+- Blank pages.
+- Incorrect page numbers.
+- Broken tables.
+- Incorrect figure placement.
+- Caption numbering.
+- List of Figures accuracy.
+- List of Tables accuracy.
+- Table of Contents accuracy.
+- References formatting.
+- Appendix placement.
+
+The PDF must visually match the Word document.
+
+## 9. FINAL DELIVERABLES
+
+Provide:
+
+1. `IoT_Network_Guard_Final_Project_Report.docx` — editable final report.
+2. `IoT_Network_Guard_Final_Project_Report.pdf` — final rendered report.
+3. `REPORT_VERIFICATION.md` — verification checklist.
+
+The DOCX must contain all updated automatic indexes and fields.
+
+The PDF must contain the actual final page numbers and updated indexes.
+
+Do not deliver a draft, outline, partially formatted document or a document with placeholder page numbers.
+
+FINAL ACCEPTANCE CONDITION:
+
+The report is complete only when the entire document has been generated, formatted, rendered, inspected page by page, and its Table of Contents, List of Tables and List of Figures have been updated with the correct final page numbers.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-16T08:46:58+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\megha\OneDrive\Desktop\IoT_WiFi_Anomaly_Detection\.env (LANGUAGE_UNSPECIFIED)
+Cursor is on line: 51
+Other open documents:
+- c:\Users\megha\OneDrive\Desktop\IoT_WiFi_Anomaly_Detection\scratch\stage3b_6_final_supabase_migration.sql (LANGUAGE_UNSPECIFIED)
+- c:\Users\megha\OneDrive\Desktop\IoT_WiFi_Anomaly_Detection\src\cloud_dashboard.py (LANGUAGE_UNSPECIFIED)
+- c:\Users\megha\OneDrive\Desktop\IoT_WiFi_Anomaly_Detection\src\cloud_sync_outbox.py (LANGUAGE_UNSPECIFIED)
+- c:\Users\megha\OneDrive\Desktop\IoT_WiFi_Anomaly_Detection\src\cloud_sync_worker.py (LANGUAGE_UNSPECIFIED)
+- c:\Users\megha\OneDrive\Desktop\IoT_WiFi_Anomaly_Detection\src\live_collector.py (LANGUAGE_UNSPECIFIED)
+</ADDITIONAL_METADATA>

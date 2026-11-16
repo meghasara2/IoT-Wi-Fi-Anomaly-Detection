@@ -1,0 +1,57 @@
+PHASE 1 DIAGNOSTIC & FEASIBILITY REPORT: MULTI-DEVICE WI-FI TRAFFIC CAPTURE
+=============================================================================
+Date/Time: 2026-10-11T11:25:00+05:30
+Workspace: C:\Users\megha\OneDrive\Desktop\IoT_WiFi_Anomaly_Detection
+Status: NEEDS MANUAL TEST (Managed Wi-Fi Baseline Confirmed Limited; Hotspot Feasibility Pending User Confirmation)
+
+1. ENVIRONMENT & TOOL INVENTORY
+-----------------------------------------------------------------------------
+- Operating System: Windows 11 (AMD64)
+- Python Version: 3.11.9
+- Scapy Status: NOT INSTALLED in active Python 3.11 environment
+- Wireshark Status: INSTALLED (tshark located at 'C:\Program Files\Wireshark\tshark.exe')
+- Npcap Status: INSTALLED & ACTIVE
+    * Kernel Driver Service: 'npcap' (STATE: 4 RUNNING)
+    * Npcap Directory: C:\Program Files\Npcap, C:\Windows\System32\Npcap
+- Network Capture Tool Available: TShark v4.x (accessible directly via full path)
+
+2. ADAPTERS & HOTSPOT AVAILABILITY
+-----------------------------------------------------------------------------
+- Primary Wi-Fi Adapter:
+    * Interface Name: 'Wi-Fi' (\Device\NPF_{5635802C-B744-4D3A-86B0-1ECE103433CF})
+    * Hardware: MediaTek MT7921 Wi-Fi 6 802.11ax PCIe Adapter
+    * MAC Address: 34:6f:24:d2:34:0d
+    * Current IPv4: 192.168.1.33
+    * Connected SSID: 'SLN PG 104-5G' (Channel 157, 5 GHz, WPA2-Personal, AP BSSID: 8c:c7:c3:c6:b9:1c)
+- Windows Mobile Hotspot Capability:
+    * Service: 'icssvc' (Windows Mobile Hotspot Service) exists (Status: Stopped, StartType: Manual)
+    * Virtual Adapters: 'Local Area Connection* 1', 'Local Area Connection* 2' present (Microsoft Wi-Fi Direct Virtual Adapter)
+    * Hotspot Status: Not enabled; no settings modified.
+
+3. PRELIMINARY BASELINE CAPTURE RESULTS (MANAGED WI-FI MODE)
+-----------------------------------------------------------------------------
+- Test 1 (General Interface Traffic, 5s):
+    * Command: tshark.exe -i 5 -a duration:5 -c 10
+    * Result: Captured 10 packets.
+    * Observation: All 10 packets were unicast TCP traffic explicitly destined to/from 192.168.1.33 (laptop's own IP).
+- Test 2 (Promiscuous / Other Client Traffic Filter, 10s):
+    * Command: tshark.exe -i 5 -a duration:10 -f "not (ip host 192.168.1.33)" -c 10
+    * Result: 0 packets captured.
+    * Technical Finding: Under standard managed infrastructure Wi-Fi (WPA2-CCMP), the Wi-Fi NIC firmware filters out other clients' unicast traffic and frame headers are 802.3 emulated. Unicast traffic between the router and other devices (e.g., phones) is NOT visible to the laptop in managed mode.
+
+4. MULTI-DEVICE FEASIBILITY EVALUATION MATRIX
+-----------------------------------------------------------------------------
+| Feature Requirement                      | Managed Infrastructure Wi-Fi | Windows Mobile Hotspot Mode |
+|------------------------------------------|------------------------------|-----------------------------|
+| Capturing laptop traffic                 | YES                          | YES                         |
+| Capturing 3rd-party client unicast       | NO (Firmware/WPA2 filtered)  | YES (Laptop acts as AP/GW)  |
+| Distinguish client-generated vs laptop   | LIMITED (Broadcast/ARP only) | YES (By client MAC & IP)    |
+| Packet timestamps & frame lengths (IAT)  | YES                          | YES                         |
+| 802.11 Radiotap / RSSI per client packet | NO (Windows Npcap limitation)| NO (Npcap provides 802.3)   |
+
+5. CONCLUSION & NEXT STEPS
+-----------------------------------------------------------------------------
+Current Result: NEEDS MANUAL TEST.
+To rigorously test multi-device attribution without modifying code or guessing:
+We must test connecting 2 client devices (e.g. Phone 1 and Phone 2 / ESP32) to the Windows Mobile Hotspot, or conduct a controlled test on the current subnet with user confirmation.
+No Phase 2 actions or code modifications have been made.

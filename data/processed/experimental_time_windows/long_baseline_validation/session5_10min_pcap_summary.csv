@@ -1,0 +1,3 @@
+Node_ID,MAC_Address,Assigned_IP,Device_Type,Label,Attributed_Packets,Uplink_Packets,Downlink_Packets
+Node_Client_1,ca:34:ea:92:d3:9e,192.168.137.201,Unverified_Mobile_Client,real_observed_traffic,8635,8635,0
+Node_Client_2,e6:2e:db:73:1c:25,192.168.137.6,Unverified_Mobile_Client,real_observed_traffic,4240,4240,0

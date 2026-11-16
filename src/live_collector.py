@@ -48,6 +48,7 @@ import datetime
 import ipaddress
 import json
 import math
+import os
 import queue
 import re
 import secrets
@@ -55,7 +56,6 @@ import sqlite3
 import sys
 import threading
 import time
-import datetime
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -118,7 +118,6 @@ try:
         evaluate_dual_detector,
         DualDetectorBundle,
     )
-    from src.ingest_serial_sensors import validate_payload
     from src.attack_detector import (
         NetworkAttackDetector,
         WindowTrafficObservation,
@@ -162,7 +161,6 @@ except ModuleNotFoundError:
         evaluate_dual_detector,
         DualDetectorBundle,
     )
-    from ingest_serial_sensors import validate_payload
     from attack_detector import (
         NetworkAttackDetector,
         WindowTrafficObservation,
@@ -172,6 +170,68 @@ except ModuleNotFoundError:
         DetectionStatus,
         Severity,
         resolve_gateway_mac,
+    )
+
+
+def validate_payload(data: Any) -> Tuple[bool, str]:
+    """Validates structure and value ranges of incoming serial JSON payload from ESP32."""
+    if not isinstance(data, dict):
+        return False, "Payload is not a JSON object"
+
+    required_keys = ["node", "seq", "uptime_ms", "dht11", "pir"]
+    for k in required_keys:
+        if k not in data:
+            return False, f"Missing required top-level key: '{k}'"
+
+    dht = data.get("dht11")
+    if not isinstance(dht, dict) or "valid" not in dht or "temp_c" not in dht or "humidity" not in dht:
+        return False, "Malformed 'dht11' block"
+
+    if dht["valid"] not in (0, 1):
+        return False, f"Invalid DHT valid flag (expected 0 or 1): {dht['valid']}"
+
+    if dht["valid"] == 1:
+        temp = dht.get("temp_c")
+        hum = dht.get("humidity")
+        if temp is None or hum is None:
+            return False, "DHT11 marked valid but values are null"
+        if not (-10.0 <= temp <= 60.0):
+            return False, f"Temperature out of plausible range: {temp} °C"
+        if not (0.0 <= hum <= 100.0):
+            return False, f"Humidity out of plausible range: {hum} %"
+
+    pir = data.get("pir")
+    if not isinstance(pir, dict) or "motion" not in pir:
+        return False, "Malformed 'pir' block"
+    if pir["motion"] not in (0, 1):
+        return False, f"Invalid PIR motion state (expected 0 or 1): {pir['motion']}"
+
+    return True, "OK"
+
+
+def format_display_row(data: Dict[str, Any]) -> str:
+    """Formats parsed telemetry into a readable terminal row."""
+    seq = data.get("seq", 0)
+    uptime_sec = data.get("uptime_ms", 0) / 1000.0
+
+    dht = data.get("dht11", {})
+    if dht.get("valid") == 1:
+        temp_str = f"{dht.get('temp_c'):>5.1f} °C"
+        hum_str = f"{dht.get('humidity'):>5.1f} %"
+        dht_status = "VALID"
+    else:
+        temp_str = "  N/A   "
+        hum_str = "  N/A  "
+        dht_status = "READ_FAIL"
+
+    pir = data.get("pir", {})
+    motion = pir.get("motion", 0)
+    motion_str = ">> MOTION DETECTED <<" if motion == 1 else "   Clear (No Motion)"
+
+    return (
+        f"[{seq:>5}] Uptime: {uptime_sec:>6.1f}s | "
+        f"DHT11: {temp_str} | Hum: {hum_str} [{dht_status}] | "
+        f"PIR: {motion_str}"
     )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1149,6 +1209,15 @@ class LiveCollector:
             pass
 
         self._update_status("STOPPED", stop_reason=reason)
+        # Flush and truncate WAL to reclaim memory and swap disk space
+        try:
+            db_chk = get_live_db_connection(self.db_path)
+            try:
+                db_chk.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            finally:
+                db_chk.close()
+        except Exception:
+            pass
         self._print_final_stats()
 
     def run_until_stopped(self) -> None:
@@ -1190,6 +1259,10 @@ class LiveCollector:
                     ),
                 )
                 db.commit()
+                try:
+                    db.execute("PRAGMA wal_checkpoint(PASSIVE);")
+                except Exception:
+                    pass
             finally:
                 db.close()
         except Exception:

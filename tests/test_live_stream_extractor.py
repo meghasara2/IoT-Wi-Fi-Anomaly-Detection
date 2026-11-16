@@ -366,6 +366,7 @@ class TestLiveStreamExtractorIntegration:
         mock_proc = MagicMock()
         mock_proc.poll.return_value = None  # process appears alive
         mock_proc.stdout = io.StringIO("".join(lines))
+        mock_proc.stderr = io.StringIO("")
         mock_proc.returncode = 0
 
         with patch("src.live_stream_extractor.subprocess.Popen", return_value=mock_proc):

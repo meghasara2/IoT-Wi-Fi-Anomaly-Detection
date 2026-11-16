@@ -525,8 +525,19 @@ class LiveStreamExtractor:
         def _drain_stderr(proc: subprocess.Popen) -> None:
             try:
                 if proc.stderr is not None:
-                    for line in iter(proc.stderr.readline, ""):
-                        if not line:
+                    # Guard against MagicMock or non-string stream in unit tests
+                    first_check = None
+                    try:
+                        first_check = proc.stderr.readline()
+                    except Exception:
+                        pass
+                    if first_check is not None and not isinstance(first_check, str):
+                        return
+                    if first_check:
+                        pass  # Processed initial read
+                    while not self._stop_event.is_set():
+                        line = proc.stderr.readline()
+                        if not isinstance(line, str) or line == "":
                             break
             except Exception:
                 pass

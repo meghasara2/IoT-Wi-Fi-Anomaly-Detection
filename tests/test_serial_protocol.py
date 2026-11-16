@@ -21,7 +21,7 @@ from unittest.mock import MagicMock, patch
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from ingest_serial_sensors import validate_payload, format_display_row
+from src.live_collector import validate_payload, format_display_row
 from src.init_live_database import init_live_database
 from src.live_collector import LiveCollector
 

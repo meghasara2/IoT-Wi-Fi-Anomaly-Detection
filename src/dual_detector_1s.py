@@ -30,30 +30,141 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.impute import SimpleImputer
 
-try:
-    from src.benchmark_1s_anomaly_detector import (
-        validate_input_dataset,
-        check_sample_size_and_contamination,
-        preprocess_features,
-        FEATURE_COLS_3,
-        FEATURE_COLS_5_RAW
+FEATURE_COLS_3 = ["packet_rate", "mean_packet_size", "packet_size_std"]
+FEATURE_COLS_5_RAW = ["packet_rate", "mean_packet_size", "packet_size_std", "mean_IAT", "IAT_std"]
+
+
+def validate_input_dataset(df: pd.DataFrame) -> None:
+    """Validates that the input DataFrame has required columns and is not empty."""
+    if df.empty:
+        raise ValueError("Input network feature DataFrame is empty.")
+
+    required = set(FEATURE_COLS_5_RAW) | {"node_id"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Input DataFrame is missing required columns: {sorted(list(missing))}")
+
+    if (df["packet_rate"] < 0).any():
+        raise ValueError("Found negative packet_rate values in input dataset.")
+    if (df["mean_packet_size"] < 0).any():
+        raise ValueError("Found negative mean_packet_size values in input dataset.")
+
+
+def check_sample_size_and_contamination(
+    n_samples: int,
+    contamination: Union[float, str],
+    client_name: str,
+    min_samples: int = 15
+) -> None:
+    """Validates that sample size is sufficient for the chosen contamination setting."""
+    if n_samples < min_samples:
+        raise ValueError(
+            f"Sample size for '{client_name}' ({n_samples}) is too small for stable Isolation Forest "
+            f"modeling (minimum required: {min_samples}). Cannot reliably fit trees."
+        )
+
+    if isinstance(contamination, str):
+        if contamination != "auto":
+            raise ValueError(f"Invalid string contamination setting '{contamination}'. Must be 'auto' or a float in (0, 0.5].")
+        return
+
+    if not isinstance(contamination, (int, float)):
+        raise TypeError(f"Contamination must be float or 'auto', got {type(contamination).__name__}.")
+
+    if contamination <= 0.0 or contamination > 0.5:
+        raise ValueError(f"Contamination setting ({contamination}) must be in range (0.0, 0.5].")
+
+    expected_outliers = n_samples * contamination
+    if expected_outliers < 1.0:
+        raise ValueError(
+            f"Sample size for '{client_name}' ({n_samples}) with contamination={contamination} "
+            f"yields fewer than 1 expected outlier ({expected_outliers:.2f} < 1.0). "
+            f"Increase sample size or use a higher contamination setting."
+        )
+
+
+def preprocess_features(
+    df: pd.DataFrame,
+    experiment: str = "5-feature",
+    imputer: Optional[SimpleImputer] = None
+) -> Tuple[np.ndarray, List[str], Optional[SimpleImputer]]:
+    """Prepares the numerical feature matrix for model evaluation."""
+    if experiment == "3-feature":
+        X = df[FEATURE_COLS_3].copy().values.astype(float)
+        return X, FEATURE_COLS_3.copy(), None
+
+    elif experiment == "5-feature":
+        X_base = df[FEATURE_COLS_3].copy().values.astype(float)
+        mean_iat_missing = df["mean_IAT"].isna().astype(float).values.reshape(-1, 1)
+        iat_std_missing = df["IAT_std"].isna().astype(float).values.reshape(-1, 1)
+        iat_raw = df[["mean_IAT", "IAT_std"]].copy().values.astype(float)
+
+        if imputer is None:
+            imputer = SimpleImputer(strategy="median")
+            iat_imputed = imputer.fit_transform(iat_raw)
+        else:
+            iat_imputed = imputer.transform(iat_raw)
+
+        X = np.hstack([X_base, iat_imputed, mean_iat_missing, iat_std_missing])
+        feat_names = FEATURE_COLS_3 + ["mean_IAT", "IAT_std", "mean_iat_missing", "iat_std_missing"]
+        return X, feat_names, imputer
+    else:
+        raise ValueError(f"Unknown experiment: {experiment}")
+
+
+def train_single_model(
+    df_train: pd.DataFrame,
+    experiment: str,
+    contamination: float = 0.05,
+    random_state: int = 42,
+    client_name: str = "ALL_POOLED"
+) -> Tuple[IsolationForest, Optional[SimpleImputer], List[str], Dict[str, Any]]:
+    """Trains an Isolation Forest solely on training data."""
+    n_train = len(df_train)
+    check_sample_size_and_contamination(n_train, contamination, client_name)
+
+    X_train, feature_names, imputer = preprocess_features(df_train, experiment=experiment, imputer=None)
+
+    clf = IsolationForest(
+        contamination=contamination,
+        random_state=random_state,
+        n_estimators=100
     )
-    from src.cross_session_1s_detector import (
-        train_single_model,
-        evaluate_single_model
-    )
-except ModuleNotFoundError:
-    from benchmark_1s_anomaly_detector import (
-        validate_input_dataset,
-        check_sample_size_and_contamination,
-        preprocess_features,
-        FEATURE_COLS_3,
-        FEATURE_COLS_5_RAW
-    )
-    from cross_session_1s_detector import (
-        train_single_model,
-        evaluate_single_model
-    )
+    clf.fit(X_train)
+
+    train_scores = clf.decision_function(X_train)
+    train_preds = clf.predict(X_train)
+
+    train_meta = {
+        "client_name": client_name,
+        "experiment": experiment,
+        "n_train_samples": n_train,
+        "fitted_offset": float(clf.offset_),
+        "train_outlier_count": int((train_preds == -1).sum()),
+        "train_score_min": float(np.min(train_scores)),
+        "train_score_median": float(np.median(train_scores)),
+        "train_score_max": float(np.max(train_scores)),
+        "feature_names": feature_names
+    }
+
+    if experiment == "5-feature" and imputer is not None:
+        train_meta["fitted_median_mean_IAT"] = float(imputer.statistics_[0])
+        train_meta["fitted_median_IAT_std"] = float(imputer.statistics_[1])
+
+    return clf, imputer, feature_names, train_meta
+
+
+def evaluate_single_model(
+    clf: IsolationForest,
+    imputer: Optional[SimpleImputer],
+    df_eval: pd.DataFrame,
+    experiment: str
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Evaluates an unchanged fitted model on evaluation data."""
+    X_eval, _, _ = preprocess_features(df_eval, experiment=experiment, imputer=imputer)
+    scores = clf.decision_function(X_eval)
+    preds = clf.predict(X_eval)
+    return scores, preds
 
 
 # Explicit minimum packet count for timing jitter evaluation

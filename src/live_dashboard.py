@@ -355,10 +355,17 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 def get_db_connection(db_path: Path) -> Optional[sqlite3.Connection]:
     """
     Opens a read-only SQLite connection to the live monitoring database.
-    Returns None if the file does not exist or cannot be accessed.
+    If the file does not exist, automatically initialises the schema and default devices.
     """
     if not db_path.exists():
-        return None
+        try:
+            try:
+                from src.init_live_database import init_live_database
+            except ImportError:
+                from init_live_database import init_live_database
+            init_live_database(db_path, overwrite=False, seed_defaults=True)
+        except Exception:
+            return None
     try:
         uri = f"file:{db_path.resolve().as_posix()}?mode=ro"
         conn = sqlite3.connect(uri, uri=True, timeout=5.0)
@@ -2764,44 +2771,72 @@ def render_attack_intelligence(conn: sqlite3.Connection, run_id: Optional[int]):
 # ─────────────────────────────────────────────────────────────────────────────
 # LIVE AUTO-REFRESH FRAGMENT CONTAINER
 # ─────────────────────────────────────────────────────────────────────────────
-@st.fragment
-def render_live_dashboard_fragment(db_path: Path, active_tab: str, selected_run_id: Optional[int]):
-    """
-    Renders the selected dashboard view with live read-only database access.
-    Gracefully handles missing or uninitialized database files.
-    """
-    conn = get_db_connection(db_path)
-    if conn is None:
-        st.markdown(
-            f"""
-            <div class="advisory-banner" style="font-size:0.92rem;">
-                <b>⚠️ Database Not Found:</b> Unable to connect to <code>{db_path}</code>.<br><br>
-                To launch the backend collection pipeline, run:
-                <pre style="background:rgba(0,0,0,0.4); padding:10px; border-radius:6px; margin-top:8px;">
+def _render_tab_content(conn: sqlite3.Connection, active_tab: str, selected_run_id: Optional[int], db_path: Path):
+    if active_tab == "Overview & Live Feed":
+        render_system_overview(conn, selected_run_id)
+    elif active_tab == "Live Network Traffic":
+        render_network_monitoring(conn, selected_run_id)
+    elif active_tab == "Anomaly Alerts Console":
+        render_anomaly_alerts(conn, selected_run_id)
+    elif active_tab == "Attack Intelligence":
+        render_attack_intelligence(conn, selected_run_id)
+    elif active_tab == "Physical Sensors (ESP32)":
+        render_sensor_monitoring(conn, selected_run_id)
+    elif active_tab == "Device Registry":
+        render_device_registry(conn)
+    elif active_tab == "Daemon Diagnostics":
+        render_diagnostics(conn, db_path, run_id=selected_run_id)
+
+
+def _render_db_not_found(db_path: Path):
+    st.markdown(
+        f"""
+        <div class="advisory-banner" style="font-size:0.92rem;">
+            <b>⚠️ Database Not Found:</b> Unable to connect to <code>{db_path}</code>.<br><br>
+            To launch the backend collection pipeline, run:
+            <pre style="background:rgba(0,0,0,0.4); padding:10px; border-radius:6px; margin-top:8px;">
 python src/init_live_database.py --db-path data/live_monitoring.db
 python src/live_collector.py --db-path data/live_monitoring.db --serial-port COM6
-                </pre>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        return
+            </pre>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("🛠️ Initialize Live Database Now", use_container_width=True):
+        try:
+            try:
+                from src.init_live_database import init_live_database
+            except ImportError:
+                from init_live_database import init_live_database
+            init_live_database(db_path, overwrite=False, seed_defaults=True)
+            st.success(f"Database initialised: {db_path}")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Initialization error: {e}")
 
+
+@st.fragment(run_every="2s")
+def render_live_dashboard_fragment_live(db_path: Path, active_tab: str, selected_run_id: Optional[int]):
+    """Renders the selected dashboard view with active 2-second streaming auto-refresh."""
+    conn = get_db_connection(db_path)
+    if conn is None:
+        _render_db_not_found(db_path)
+        return
     try:
-        if active_tab == "Overview & Live Feed":
-            render_system_overview(conn, selected_run_id)
-        elif active_tab == "Live Network Traffic":
-            render_network_monitoring(conn, selected_run_id)
-        elif active_tab == "Anomaly Alerts Console":
-            render_anomaly_alerts(conn, selected_run_id)
-        elif active_tab == "Attack Intelligence":
-            render_attack_intelligence(conn, selected_run_id)
-        elif active_tab == "Physical Sensors (ESP32)":
-            render_sensor_monitoring(conn, selected_run_id)
-        elif active_tab == "Device Registry":
-            render_device_registry(conn)
-        elif active_tab == "Daemon Diagnostics":
-            render_diagnostics(conn, db_path, run_id=selected_run_id)
+        _render_tab_content(conn, active_tab, selected_run_id, db_path)
+    finally:
+        conn.close()
+
+
+@st.fragment
+def render_live_dashboard_fragment(db_path: Path, active_tab: str, selected_run_id: Optional[int]):
+    """Renders the selected dashboard view in static read-only mode."""
+    conn = get_db_connection(db_path)
+    if conn is None:
+        _render_db_not_found(db_path)
+        return
+    try:
+        _render_tab_content(conn, active_tab, selected_run_id, db_path)
     finally:
         conn.close()
 
@@ -2862,6 +2897,7 @@ def main():
             """,
             unsafe_allow_html=True,
         )
+        auto_refresh = st.toggle("⚡ Live Stream Polling (2s)", value=True, help="Automatically refreshes live telemetry every 2 seconds without full-page reloads")
         db_path_input = st.text_input("Live DB Path", value=str(DEFAULT_LIVE_DB_PATH))
         db_path = Path(db_path_input)
 
@@ -2899,7 +2935,10 @@ def main():
         )
 
     # Render Active Tab inside Live Fragment
-    render_live_dashboard_fragment(db_path, active_tab, selected_run_id)
+    if auto_refresh:
+        render_live_dashboard_fragment_live(db_path, active_tab, selected_run_id)
+    else:
+        render_live_dashboard_fragment(db_path, active_tab, selected_run_id)
 
 
 if __name__ == "__main__":

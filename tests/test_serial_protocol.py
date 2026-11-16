@@ -433,6 +433,32 @@ class TestSerialReconnectionAndHandshakeStage653(unittest.TestCase):
         self.assertTrue(health["serial_reconnecting"])
         self.assertIn("Serial port COM6 disconnected", health["stop_reason"])
 
+    def test_send_set_channel_command(self):
+        """Dynamic channel configuration command emits valid JSON and updates channel."""
+        mock_ser = MagicMock()
+        mock_ser.is_open = True
+        self.collector._serial_conn = mock_ser
+
+        res = self.collector.send_set_channel(ser=mock_ser, channel=11)
+        self.assertTrue(res)
+        mock_ser.write.assert_called_once()
+        written_data = mock_ser.write.call_args[0][0].decode("utf-8")
+        parsed = json.loads(written_data.strip())
+        self.assertEqual(parsed["cmd"], "set_channel")
+        self.assertEqual(parsed["channel"], 11)
+
+        # Invalid channel outside 1-14 rejected
+        self.assertFalse(self.collector.send_set_channel(ser=mock_ser, channel=15))
+        self.assertFalse(self.collector.send_set_channel(ser=mock_ser, channel=0))
+
+    def test_process_channel_configured_and_pong_messages(self):
+        """Collector recognizes CHANNEL_CONFIGURED and PONG status lines without errors."""
+        res_chan = self.collector.process_serial_line('{"status":"CHANNEL_CONFIGURED","boot_id":123,"channel":11}')
+        self.assertEqual(res_chan, "CHANNEL_CONFIGURED")
+
+        res_pong = self.collector.process_serial_line('{"status":"PONG","boot_id":123,"uptime_ms":54000}')
+        self.assertEqual(res_pong, "PONG")
+
 
 if __name__ == "__main__":
     unittest.main()

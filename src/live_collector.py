@@ -957,6 +957,7 @@ class LiveCollector:
         self._session_established: bool = False
         self._session_lock = threading.Lock()
         self._seen_mgmt_sequences: Set[int] = set()
+        self._serial_conn: Any = None
 
         # Wi-Fi management summary tracking
         self._last_summary_snapshot: Optional[Dict[str, Any]] = None
@@ -2540,6 +2541,24 @@ class LiveCollector:
                 print(f"[SERIAL][WARN] Failed to transmit sniffer probe: {e}")
         return nonce
 
+    def send_set_channel(self, ser: Any = None, channel: int = 6) -> bool:
+        """
+        Emits a dynamic channel configuration command to the ESP32 firmware over serial.
+        Allows aligning ESP32 sniffer channel to the host Windows Mobile Hotspot channel.
+        """
+        if not (1 <= channel <= 14):
+            return False
+        if ser is None:
+            ser = getattr(self, "_serial_conn", None)
+        if ser is not None and getattr(ser, "is_open", False):
+            try:
+                cmd = json.dumps({"cmd": "set_channel", "channel": int(channel)}) + "\n"
+                ser.write(cmd.encode("utf-8"))
+                return True
+            except Exception as e:
+                print(f"[SERIAL][WARN] Failed to transmit set_channel command: {e}")
+        return False
+
     def _handle_sniffer_status(self, payload: Dict[str, Any]) -> str:
         """
         Processes 'WIFI_SNIFFER_INITIALIZED' handshake status response.
@@ -2587,6 +2606,17 @@ class LiveCollector:
             # Authoritative channel from hardware sniffer handshake (Stage 8.4)
             hw_chan = payload.get("channel")
             self._update_channel_alignment_with_hardware_channel(hw_chan)
+
+            # Auto-align channel if hotspot channel is known and differs
+            if (
+                self._cached_hotspot_channel is not None
+                and hw_chan is not None
+                and self._cached_hotspot_channel != hw_chan
+            ):
+                print(
+                    f"[SERIAL][INFO] Requesting dynamic ESP32 channel alignment from {hw_chan} to {self._cached_hotspot_channel}..."
+                )
+                self.send_set_channel(channel=self._cached_hotspot_channel)
         return "SNIFFER_STATUS"
 
     def _handle_wifi_mgmt_event(self, payload: Dict[str, Any]) -> str:
@@ -2706,6 +2736,16 @@ class LiveCollector:
         if payload.get("status") == "WIFI_SNIFFER_INITIALIZED":
             return self._handle_sniffer_status(payload)
 
+        if payload.get("status") == "CHANNEL_CONFIGURED":
+            conf_chan = payload.get("channel")
+            print(f"[SERIAL][INFO] Hardware channel successfully configured to: {conf_chan}")
+            if conf_chan is not None:
+                self._update_channel_alignment_with_hardware_channel(conf_chan)
+            return "CHANNEL_CONFIGURED"
+
+        if payload.get("status") == "PONG":
+            return "PONG"
+
         # B. Wi-Fi Management Events
         msg_type = payload.get("type")
         if msg_type == "wifi_mgmt":
@@ -2816,6 +2856,7 @@ class LiveCollector:
                     if self._status != "ERROR":
                         self._stop_reason = None
                         self._persist_status_locked(self._status, None)
+                self._serial_conn = ser
 
                 if hasattr(ser, "reset_input_buffer"):
                     ser.reset_input_buffer()
@@ -2889,6 +2930,7 @@ class LiveCollector:
                 current_backoff = min(current_backoff * self.serial_backoff_factor, self.serial_backoff_max_sec)
 
             finally:
+                self._serial_conn = None
                 if ser is not None and getattr(ser, "is_open", False):
                     try:
                         ser.close()

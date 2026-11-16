@@ -110,6 +110,10 @@ static uint32_t s_consumer_in_flight = 0; // Transient frames popped by loop() u
 static uint32_t s_uart_accepted = 0;      // Events whose complete line was accepted by UART TX buffer
 static uint32_t s_uart_failed = 0;        // Events whose UART write failed or was truncated
 
+// Dynamic 2.4 GHz monitoring channel (default: Channel 6)
+static uint8_t s_sniffer_channel = SNIFFER_CHANNEL;
+static volatile bool s_force_sample = false;
+
 // Token bucket state (guarded by s_accounting_mux)
 static uint32_t s_tb_millitokens = TB_CAPACITY_MILLITOKENS;
 static uint32_t s_tb_last_ms = 0;
@@ -267,8 +271,9 @@ void wifi_sniffer_cb(void *buf, wifi_promiscuous_pkt_type_t type) {
     }
 }
 
-// Serial command parsing for host handshake probe
+// Serial command parsing for host handshake probe and runtime commands
 void process_command_line(const char *line) {
+    // 1. Handshake Probe Request: {"cmd":"probe","nonce":N}
     if (strstr(line, "\"probe\"") != NULL && strstr(line, "\"cmd\"") != NULL) {
         const char *p = strstr(line, "\"nonce\"");
         if (p != NULL) {
@@ -281,13 +286,57 @@ void process_command_line(const char *line) {
             if (endptr != p) {
                 char resp_buf[128];
                 int len = snprintf(resp_buf, sizeof(resp_buf),
-                    "{\"status\":\"WIFI_SNIFFER_INITIALIZED\",\"boot_id\":%lu,\"nonce\":%lu,\"channel\":%d}\n",
-                    (unsigned long)s_boot_id, nonce, SNIFFER_CHANNEL);
+                    "{\"status\":\"WIFI_SNIFFER_INITIALIZED\",\"boot_id\":%lu,\"nonce\":%lu,\"channel\":%u}\n",
+                    (unsigned long)s_boot_id, nonce, (unsigned int)s_sniffer_channel);
                 if (len > 0 && len < (int)sizeof(resp_buf)) {
                     Serial.write((const uint8_t*)resp_buf, (size_t)len);
                 }
             }
         }
+        return;
+    }
+
+    // 2. Dynamic Channel Configuration: {"cmd":"set_channel","channel":C}
+    if (strstr(line, "\"set_channel\"") != NULL && strstr(line, "\"cmd\"") != NULL) {
+        const char *p = strstr(line, "\"channel\"");
+        if (p != NULL) {
+            p += 9; // advance past "\"channel\""
+            while (*p == ' ' || *p == ':' || *p == '\t' || *p == '"') {
+                p++;
+            }
+            char *endptr = NULL;
+            long ch = strtol(p, &endptr, 10);
+            if (endptr != p && ch >= 1 && ch <= 14) {
+                s_sniffer_channel = (uint8_t)ch;
+                esp_wifi_set_channel(s_sniffer_channel, WIFI_SECOND_CHAN_NONE);
+                char resp_buf[128];
+                int len = snprintf(resp_buf, sizeof(resp_buf),
+                    "{\"status\":\"CHANNEL_CONFIGURED\",\"boot_id\":%lu,\"channel\":%u}\n",
+                    (unsigned long)s_boot_id, (unsigned int)s_sniffer_channel);
+                if (len > 0 && len < (int)sizeof(resp_buf)) {
+                    Serial.write((const uint8_t*)resp_buf, (size_t)len);
+                }
+            }
+        }
+        return;
+    }
+
+    // 3. Ping / Keepalive: {"cmd":"ping"}
+    if (strstr(line, "\"ping\"") != NULL && strstr(line, "\"cmd\"") != NULL) {
+        char resp_buf[128];
+        int len = snprintf(resp_buf, sizeof(resp_buf),
+            "{\"status\":\"PONG\",\"boot_id\":%lu,\"uptime_ms\":%lu}\n",
+            (unsigned long)s_boot_id, millis());
+        if (len > 0 && len < (int)sizeof(resp_buf)) {
+            Serial.write((const uint8_t*)resp_buf, (size_t)len);
+        }
+        return;
+    }
+
+    // 4. Force Immediate Sensor Sample: {"cmd":"sample"}
+    if (strstr(line, "\"sample\"") != NULL && strstr(line, "\"cmd\"") != NULL) {
+        s_force_sample = true;
+        return;
     }
 }
 
@@ -405,7 +454,7 @@ void emit_wifi_mgmt_summary(unsigned long now_ms) {
 void init_wifi_sniffer() {
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
-    esp_wifi_set_channel(SNIFFER_CHANNEL, WIFI_SECOND_CHAN_NONE);
+    esp_wifi_set_channel(s_sniffer_channel, WIFI_SECOND_CHAN_NONE);
 
     wifi_promiscuous_filter_t filter = {
         .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT
@@ -419,8 +468,8 @@ void setup() {
   // Initialize Serial interface at 115200 baud
   Serial.begin(115200);
 
-  // Initialize GPIO pins
-  pinMode(PIRPIN, INPUT);
+  // Initialize GPIO pins (INPUT_PULLDOWN prevents floating noise on disconnected sensor)
+  pinMode(PIRPIN, INPUT_PULLDOWN);
 
   // Initialize DHT11 sensor
   dht.begin();
@@ -449,7 +498,7 @@ void setup() {
 void loop() {
   unsigned long currentMillis = millis();
 
-  // 1. Process serial commands (e.g. handshake probe)
+  // 1. Process serial commands (e.g. handshake probe, channel configuration, ping, sample)
   handle_serial_input();
 
   // 2. Drain and transmit enqueued Wi-Fi management events (up to 8 per loop)
@@ -487,8 +536,9 @@ void loop() {
     emit_wifi_mgmt_summary(currentMillis);
   }
 
-  // 4. Non-blocking sampling timer every SAMPLING_INTERVAL_MS (2000 ms)
-  if (currentMillis - lastSampleTime >= SAMPLING_INTERVAL_MS) {
+  // 4. Non-blocking sampling timer every SAMPLING_INTERVAL_MS (2000 ms) or on forced sample
+  if (s_force_sample || (currentMillis - lastSampleTime >= SAMPLING_INTERVAL_MS)) {
+    s_force_sample = false;
     lastSampleTime = currentMillis;
     sequenceNumber++;
 
@@ -496,11 +546,13 @@ void loop() {
     float humidity = dht.readHumidity();
     float temperature = dht.readTemperature(); // Celsius
 
-    // 2. Validate DHT11 sensor readings (isnan check)
-    bool dhtValid = !isnan(humidity) && !isnan(temperature);
+    // 2. Validate DHT11 sensor readings (isnan check AND physical range limits)
+    bool dhtValid = !isnan(humidity) && !isnan(temperature) &&
+                    (temperature >= -10.0f && temperature <= 60.0f) &&
+                    (humidity >= 0.0f && humidity <= 100.0f);
 
     // 3. Read AM312 PIR Motion Sensor (Digital 0 or 1)
-    int pirMotion = digitalRead(PIRPIN);
+    int pirMotion = (digitalRead(PIRPIN) == HIGH) ? 1 : 0;
 
     // 4. Construct and emit clean, single-line JSON payload
     // If DHT11 read timed out or failed checksum, emit 'null' rather than artificial '0.0'

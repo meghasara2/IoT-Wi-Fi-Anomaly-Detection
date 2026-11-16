@@ -1,0 +1,388 @@
+\documentclass[11pt,a4paper]{article}
+
+% --- Core Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\usepackage{listings}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage{microtype}
+\usepackage[hidelinks,colorlinks=true,linkcolor=blue!70!black,urlcolor=blue!80!black,citecolor=blue!70!black]{hyperref}
+
+% --- Color Palette ---
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.96,0.97,0.98}
+\definecolor{primary}{RGB}{18,52,86}
+\definecolor{alertred}{RGB}{180,30,30}
+
+% --- Code Listings Configuration ---
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{primary}\bfseries,
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=7pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single,
+    rulecolor=\color{black!20}
+}
+\lstset{style=mystyle}
+
+% --- Header and Footer ---
+\setlength{\headheight}{14pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textsc{IoT Wi-Fi Network Security \& SOC Deployment}}
+\fancyhead[R]{\thepage}
+\fancyfoot[C]{\footnotesize AI-Assisted Real-Time Intrusion Detection System $\cdot$ Operational Manual}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+% --- Document Metadata ---
+\title{\vspace{-1.5cm}\textbf{\LARGE AI-Assisted IoT Wi-Fi Network Security and Anomaly Detection System}\\[0.4cm]
+\Large Complete Operational Manual, Firmware Flashing Guide, and SOC Frontend Deployment}
+\author{\textbf{Justin \& Research Team} \\ Department of Computing and Network Security}
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+This operational manual provides exhaustive, step-by-step instructions for deploying, configuring, and operating the AI-Assisted IoT Wi-Fi Network Security and Anomaly Detection System. It covers: (1) compiling and flashing the dual-sensor and promiscuous management sniffer firmware onto the ESP32 microcontroller using the Arduino IDE; (2) required hardware pinouts, power distribution, and sensor calibration; (3) one-click batch execution of the Streamlit Security Operations Center (SOC) frontend via \texttt{run\_frontend.bat}; (4) running the background ingestion daemon (\texttt{live\_collector.py}); and (5) diagnostic workflows for hardware channel auto-alignment, memory safety, and attack alert investigation.
+\end{abstract}
+
+\vspace{0.3cm}
+\tableofcontents
+\vspace{0.5cm}
+\hrule
+\vspace{0.5cm}
+
+% =============================================================================
+\section{System Architecture Overview}
+% =============================================================================
+
+The system is structured as an out-of-band, multi-stage hybrid detection platform. It captures both digital packet telemetry over the local Wi-Fi local area network (via TShark) and raw 802.11 management attack frames floating through physical air space (via ESP32 promiscuous sniffing), correlated with environmental IoT sensors.
+
+\begin{figure}[htbp]
+\centering
+\begin{verbatim}
+       +--------------------------------------------------------+
+       |             2.4 GHz Physical Radio Airspace            |
+       +--------------------------------------------------------+
+              | (802.11 Deauth/Disassoc)       | (Wi-Fi 802.11 b/g/n)
+              v                                v
+       +--------------+                 +--------------------+
+       | ESP32 Node   |                 | Windows Hotspot    |
+       | (Sniffer)    |                 | Gateway Adapter    |
+       +--------------+                 +--------------------+
+              |                                   |
+              | USB Serial UART (115200 baud)     | TShark Packet Stream
+              v                                   v
+       +--------------------------------------------------------+
+       |               Python Background Ingestion               |
+       |                   (src/live_collector.py)               |
+       |                                                        |
+       |  - 1-Second Sliding Window Feature Extraction          |
+       |  - Frozen Dual-Detector Isolation Forest Inference      |
+       |  - Deterministic Network Attack Rules (DoS, Scan, ARP)  |
+       |  - Dynamic ESP32 Sniffer Channel Auto-Alignment         |
+       +--------------------------------------------------------+
+                                   |
+                                   | WAL Journal Writes
+                                   v
+       +--------------------------------------------------------+
+       |            SQLite Database (data/live_monitoring.db)    |
+       +--------------------------------------------------------+
+                                   |
+                                   | 2-Second Polling Fragment
+                                   v
+       +--------------------------------------------------------+
+       |        Streamlit SOC Frontend (src/live_dashboard.py)   |
+       |                 Launched via: run_frontend.bat         |
+       +--------------------------------------------------------+
+\end{verbatim}
+\caption{End-to-End Hybrid Detection and Telemetry Ingestion Architecture.}
+\end{figure}
+
+\subsection{Key Design Guarantee: Zero Network Footprint}
+A fundamental architectural principle of this system is that \textbf{the ESP32 microcontroller does not join any Wi-Fi network and does not host an Access Point (SoftAP)}. 
+\begin{itemize}[noitemsep]
+    \item It has \textbf{no IP address}, no MAC binding on the host router, and zero open TCP/UDP sockets.
+    \item It listens passively to raw 802.11 radio frames on its configured channel using ESP-IDF promiscuous filters.
+    \item All telemetry is delivered out-of-band via a physical \textbf{USB Serial cable} directly into the host PC, ensuring that wireless jamming or deauthentication attacks cannot silence or compromise sensor telemetry.
+\end{itemize}
+
+% =============================================================================
+\section{Hardware Requirements and Sensor Wiring}
+% =============================================================================
+
+\subsection{Bill of Materials}
+\begin{enumerate}[noitemsep]
+    \item \textbf{ESP32 Development Board}: ESP32-WROOM-32, NodeMCU-32S, or ESP32 DevKit v1.
+    \item \textbf{DHT11 Sensor}: Digital Temperature and Relative Humidity sensor (3-pin module or 4-pin bare sensor).
+    \item \textbf{AM312 PIR Sensor}: Miniature Passive Infrared Human Motion detector.
+    \item \textbf{Host Computer}: Windows 10/11 with Wi-Fi adapter supporting Windows Mobile Hotspot.
+    \item \textbf{Micro-USB / Type-C Data Cable}: High-quality cable carrying power and D+/D- data lines.
+\end{enumerate}
+
+\subsection{Pinout and Wiring Table}
+All connections use standard 3.3V logic levels. \textbf{Do NOT connect sensors to the 5V / VIN pin}, as overvoltage will damage the ESP32 GPIO inputs.
+
+\begin{table}[htbp]
+\centering
+\begin{tabularx}{\textwidth}{llllX}
+\toprule
+\textbf{Component} & \textbf{Pin Label} & \textbf{ESP32 Pin} & \textbf{Voltage} & \textbf{Notes / Function} \\
+\midrule
+\textbf{DHT11} & VCC (+) & \textbf{3V3} & 3.3V & Power supply rail \\
+\textbf{DHT11} & GND ($-$) & \textbf{GND} & 0V & Common ground reference \\
+\textbf{DHT11} & DATA / OUT & \textbf{GPIO 4} & 3.3V Logic & Single-wire digital bidirectional data \\
+\midrule
+\textbf{AM312 PIR} & VCC & \textbf{3V3} & 3.3V & Power supply rail (3.0V -- 5.0V compatible) \\
+\textbf{AM312 PIR} & GND & \textbf{GND} & 0V & Common ground reference \\
+\textbf{AM312 PIR} & OUT & \textbf{GPIO 27} & 3.3V Logic & Digital high (1) on motion, low (0) on idle \\
+\bottomrule
+\end{tabularx}
+\caption{Complete ESP32 Sensor Hardware Pin Interconnections.}
+\end{table}
+
+\paragraph{Pull-Up Resistor Notice:} If you are using a bare 4-pin DHT11 sensor rather than a 3-pin breakout module, place a $4.7\text{ k}\Omega$ to $10\text{ k}\Omega$ resistor between DHT11 pin 2 (DATA) and pin 1 (3V3). Breakout boards with 3 pins already include this SMD resistor on the PCB.
+
+% =============================================================================
+\section{ESP32 Firmware Setup and Flashing via Arduino IDE}
+% =============================================================================
+
+The firmware source code is located at:
+\begin{center}
+\texttt{firmware/esp32\_sensor\_node/esp32\_sensor\_node.ino}
+\end{center}
+
+Follow these exact steps to compile and flash the firmware onto the ESP32.
+
+\subsection{Step 1: Install Arduino IDE}
+Download and install \textbf{Arduino IDE 2.3.x} (or 1.8.19) from \url{https://www.arduino.cc/en/software}.
+
+\subsection{Step 2: Install the ESP32 Board Package}
+\begin{enumerate}
+    \item Open the Arduino IDE.
+    \item Navigate to \textbf{File $\rightarrow$ Preferences}.
+    \item Locate the field labeled \textbf{Additional Boards Manager URLs} and paste the following official Espressif URL:
+\begin{lstlisting}[numbers=none]
+https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+\end{lstlisting}
+    \item Click \textbf{OK}.
+    \item Open \textbf{Tools $\rightarrow$ Board $\rightarrow$ Boards Manager...} (or click the board icon on the left sidebar in Arduino IDE 2.x).
+    \item Type \texttt{esp32} in the search bar.
+    \item Locate \textbf{esp32 by Espressif Systems} and click \textbf{Install} (version 2.0.14 or later recommended).
+\end{enumerate}
+
+\subsection{Step 3: Install Required Sensor Libraries}
+Open \textbf{Tools $\rightarrow$ Manage Libraries...} (or click the library book icon on the left sidebar).
+\begin{enumerate}
+    \item In the search box, type: \texttt{DHT sensor library}.
+    \item Locate \textbf{DHT sensor library by Adafruit} and click \textbf{Install}.
+    \item If prompted with ``\textit{Install All Dependencies?}'', click \textbf{Install All}. This automatically installs \textbf{Adafruit Unified Sensor}.
+\end{enumerate}
+
+\subsection{Step 4: Configure Board Settings in Arduino IDE}
+Connect the ESP32 to your PC using the USB cable. Under the \textbf{Tools} menu, set:
+\begin{itemize}[noitemsep]
+    \item \textbf{Board:} \texttt{ESP32 Dev Module} (or \texttt{NodeMCU-32S})
+    \item \textbf{Upload Speed:} \texttt{921600} (use \texttt{115200} if upload errors occur on budget USB cables)
+    \item \textbf{CPU Frequency:} \texttt{240MHz (WiFi/BT)}
+    \item \textbf{Flash Frequency:} \texttt{80MHz}
+    \item \textbf{Flash Mode:} \texttt{QIO}
+    \item \textbf{Port:} Select the detected COM port (e.g., \texttt{COM3}, \texttt{COM6}).
+\end{itemize}
+
+\subsection{Step 5: Compile and Upload Firmware}
+\begin{enumerate}
+    \item Open \texttt{firmware/esp32\_sensor\_node/esp32\_sensor\_node.ino} in the Arduino IDE.
+    \item Click the \textbf{Upload} arrow icon ($\rightarrow$) or press \texttt{Ctrl + U}.
+    \item \textbf{Bootloader Synchronization}: If the console shows:
+\begin{lstlisting}[numbers=none]
+Connecting........_____....._____.....
+\end{lstlisting}
+    immediately press and hold the physical \textbf{BOOT} (or \textbf{IO0}) button on the ESP32 board for 2 seconds until the upload progress percentage ($1\% \dots 100\%$) appears, then release it.
+    \item The upload finishes with \texttt{Hash of data verified} and \texttt{Hard resetting via RTS pin...}.
+\end{enumerate}
+
+\subsection{Step 6: Hardware Verification via Serial Monitor}
+\begin{enumerate}
+    \item In the Arduino IDE, open \textbf{Tools $\rightarrow$ Serial Monitor} (\texttt{Ctrl + Shift + M}).
+    \item Set the baud rate dropdown to \textbf{115200 baud} and line ending to \textbf{Newline}.
+    \item Press the \textbf{EN / RST} button on the ESP32. You will observe the boot announcement followed by periodic telemetry:
+\begin{lstlisting}[numbers=none]
+{"status":"ESP32_TELEMETRY_INITIALIZED","baud":115200}
+{"node":"esp32_gateway","seq":1,"uptime_ms":2014,"dht11":{"valid":1,"temp_c":24.8,"humidity":52.1},"pir":{"motion":0}}
+\end{lstlisting}
+    \item \textbf{CRITICAL}: \textbf{Close the Arduino Serial Monitor window} before starting the Python backend collector. Windows does not allow multiple processes to share the same COM port simultaneously.
+\end{enumerate}
+
+% =============================================================================
+\section{One-Click Frontend Deployment (\texttt{run\_frontend.bat})}
+% =============================================================================
+
+The project includes an automated, self-healing batch launcher: \texttt{run\_frontend.bat}.
+
+\subsection{How It Works Under the Hood}
+When executed, \texttt{run\_frontend.bat} performs the following sequential checks:
+\begin{enumerate}[noitemsep]
+    \item \textbf{Project Root Anchoring}: Uses \texttt{\%~dp0} to guarantee correct working directory context regardless of whether it is double-clicked from Windows File Explorer or invoked via terminal.
+    \item \textbf{Virtual Environment Detection}: Searches for \texttt{.venv\textbackslash Scripts\textbackslash python.exe}. If absent, it smoothly falls back to the system Python installation.
+    \item \textbf{Autonomous Database Guard}: Checks if \texttt{data\textbackslash live\_monitoring.db} exists. If not found, it automatically calls \texttt{init\_live\_database(..., seed\_defaults=True)} to provision all 9 database tables and default MAC device profiles.
+    \item \textbf{Streamlit SOC Launch}: Executes \texttt{streamlit run src\textbackslash live\_dashboard.py -{}-server.port 8501}.
+    \item \textbf{Failure Trapping}: If any step exits abnormally, the window remains open with an explanatory error code rather than abruptly closing.
+\end{enumerate}
+
+\subsection{Execution Methods}
+
+\paragraph{Method A: Double-Click (Recommended for Operators)}
+Navigate to the project folder in Windows File Explorer and simply double-click:
+\begin{center}
+\fbox{\textbf{\texttt{run\_frontend.bat}}}
+\end{center}
+
+\paragraph{Method B: Command Prompt / PowerShell}
+Open a terminal in the project directory and run:
+\begin{lstlisting}[language=bash, numbers=none]
+.\run_frontend.bat
+\end{lstlisting}
+
+\subsection{Accessing the Live SOC Dashboard}
+Once the terminal displays:
+\begin{lstlisting}[numbers=none]
+  You can now view your Streamlit app in your browser.
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.1.2:8501
+\end{lstlisting}
+open your web browser and navigate to:
+\begin{center}
+\textbf{\url{http://localhost:8501}}
+\end{center}
+
+% =============================================================================
+\section{Running the Complete Production Pipeline}
+% =============================================================================
+
+To run the complete system with live hardware and real-time network traffic analysis, follow this standard operational sequence:
+
+\subsection{Step 1: Enable Windows Mobile Hotspot}
+\begin{enumerate}[noitemsep]
+    \item Open Windows Settings $\rightarrow$ \textbf{Network \& Internet} $\rightarrow$ \textbf{Mobile hotspot}.
+    \item Set Network band to \textbf{2.4 GHz} (802.11 b/g/n).
+    \item Toggle Mobile Hotspot to \textbf{On}.
+    \item Connect target IoT devices (e.g., test smartphones or ESP8266/ESP32 clients) to this hotspot.
+\end{enumerate}
+
+\subsection{Step 2: Start the Live Ingestion Collector}
+Open a terminal window and run:
+\begin{lstlisting}[language=bash, numbers=none]
+.venv\Scripts\python.exe src/live_collector.py --port COM6
+\end{lstlisting}
+\textit{(Replace \texttt{COM6} with the COM port assigned to your ESP32 in Device Manager).}
+
+The collector will:
+\begin{itemize}[noitemsep]
+    \item Query Windows for the active Mobile Hotspot virtual adapter and Wi-Fi channel.
+    \item Connect to the ESP32, issue a cryptographic probe handshake (\texttt{\{"cmd":"probe"...\}}), and synchronize the ESP32 sniffer radio to the hotspot's channel.
+    \item Launch TShark to capture 1-second packet windows.
+    \item Re-create the frozen Session 1 Dual-Detector bundle and begin real-time scoring.
+\end{itemize}
+
+\subsection{Step 3: Launch the Frontend}
+In a separate terminal (or by double-clicking), execute:
+\begin{lstlisting}[language=bash, numbers=none]
+.\run_frontend.bat
+\end{lstlisting}
+The dashboard will display incoming sensor telemetry, network traffic rates, and attack alerts with 2-second streaming auto-refresh.
+
+% =============================================================================
+\section{Dashboard Features and Alert Interpretation}
+% =============================================================================
+
+\subsection{SOC Telemetry Panels}
+\begin{itemize}
+    \item \textbf{Collector Health Matrix}: Displays real-time heartbeats, database WAL file size, serial connection backoff state, and hardware channel alignment.
+    \item \textbf{Dual-Detector Engine}: Renders 1-second Isolation Forest outlier scores ($\pm 1$) and packet timing distributions for each enrolled device.
+    \item \textbf{IoT Environmental Correlation}: Charts live temperature (°C), humidity (\%), and PIR human motion states alongside network packet surges.
+\end{itemize}
+
+\subsection{Attack Classification Matrix}
+\begin{table}[htbp]
+\centering
+\begin{tabularx}{\textwidth}{p{3.2cm}p{5.0cm}X}
+\toprule
+\textbf{Attack Type} & \textbf{Detection Logic} & \textbf{Primary Indicators} \\
+\midrule
+\textbf{DoS / Flood} & Sustained high packet-per-second rate targeted at a specific internal node or gateway. & Rates $\ge 60\text{ PPS}$ over $\ge 2\text{ s}$, high concentration index ($>0.70$). Suppressed if entire fleet surges simultaneously. \\
+\addlinespace
+\textbf{Horizontal Scan} & Single scanner probing identical ports across multiple LAN IP targets. & $\ge 5$ distinct destination IPs targeted with SYN/UDP frames within sliding window. \\
+\addlinespace
+\textbf{Vertical Scan} & Single scanner probing multiple destination ports on a single IP target. & $\ge 8$ distinct transport ports probed on target host within sliding window. \\
+\addlinespace
+\textbf{IP / MAC Spoofing} & Same IP claimed by an unregistered or conflicting MAC address. & Conflicting IP-to-MAC ARP bindings against the enrolled device registry. \\
+\addlinespace
+\textbf{Wi-Fi Deauthentication} & Over-the-air 802.11 management frames intercepted by ESP32 sniffer. & Subtype 12 (Deauth) or Subtype 10 (Disassoc) frame bursts. Reason codes and signal strength (RSSI) reported. \\
+\bottomrule
+\end{tabularx}
+\caption{SOC Threat Classification and Verification Criteria.}
+\end{table}
+
+% =============================================================================
+\section{Diagnostics and Troubleshooting}
+% =============================================================================
+
+\subsection{Common Issues and Solutions}
+
+\paragraph{1. Serial Port Access Denied (\texttt{PermissionError} / \texttt{COM Port Busy}):}
+\begin{itemize}[noitemsep]
+    \item \textbf{Cause}: Arduino IDE Serial Monitor or another terminal instance has an exclusive lock on the COM port.
+    \item \textbf{Solution}: Close the Serial Monitor window in Arduino IDE and restart \texttt{live\_collector.py}.
+\end{itemize}
+
+\paragraph{2. Wi-Fi Channel Mismatch Warning:}
+\begin{itemize}[noitemsep]
+    \item \textbf{Cause}: The Windows Hotspot adapter hopped to Channel 1 or 11, while the ESP32 defaulted to Channel 6.
+    \item \textbf{Solution}: The updated collector automatically emits \texttt{\{"cmd":"set\_channel","channel":N\}} upon handshake, tuning the ESP32 in real time. If manual tuning is desired, set the default channel in line 42 of \texttt{esp32\_sensor\_node.ino} and reflash.
+\end{itemize}
+
+\paragraph{3. Memory Leak Prevention \& SQLite WAL Checkpointing:}
+\begin{itemize}[noitemsep]
+    \item The collector automatically runs \texttt{PRAGMA wal\_checkpoint(PASSIVE)} during periodic status heartbeats and \texttt{PRAGMA wal\_checkpoint(TRUNCATE)} on shutdown.
+    \item This prevents virtual memory and Windows swap pagefile thrashing, maintaining RAM usage under 60 MB.
+\end{itemize}
+
+\paragraph{4. Terminating Background Zombie Processes:}
+If an orphaned Streamlit or Python process locks port 8501 or the database, run the bundled PowerShell utility:
+\begin{lstlisting}[language=bash, numbers=none]
+powershell -ExecutionPolicy Bypass -File scripts/kill_zombies.ps1
+\end{lstlisting}
+
+% =============================================================================
+\section{Conclusion}
+% =============================================================================
+This manual provides the foundational operational guidelines for the AI-Assisted IoT Wi-Fi Network Security System. With zero-footprint passive sniffing, autonomous database self-healing, and one-click frontend deployment, the system provides high-reliability, real-time intrusion monitoring for mission-critical IoT deployments.
+
+\end{document}

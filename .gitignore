@@ -48,3 +48,13 @@ firmware/build/
 *.elf
 *.map
 
+# LaTeX compilation auxiliary artifacts
+*.aux
+*.toc
+*.log
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+

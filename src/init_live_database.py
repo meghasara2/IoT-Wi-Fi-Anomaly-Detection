@@ -39,6 +39,7 @@ import argparse
 import sqlite3
 import sys
 from pathlib import Path
+from typing import Any, Union
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Default path — isolated from production DB
@@ -253,12 +254,12 @@ CREATE INDEX IF NOT EXISTS idx_outbox_uuid
 """
 
 
-def _safety_check(db_path: Path) -> None:
+def _safety_check(db_path: Any) -> None:
     """
     Refuses to operate on the production database.
     Raises RuntimeError if the resolved path matches iot_anomaly.db.
     """
-    resolved = db_path.resolve()
+    resolved = Path(db_path).resolve()
     prod_resolved = PRODUCTION_DB_PATH.resolve()
     if resolved == prod_resolved:
         raise RuntimeError(
@@ -368,9 +369,8 @@ def init_live_database(
     RuntimeError   : If db_path resolves to the production database.
     FileExistsError: If the database already exists and overwrite=False.
     """
-    _safety_check(db_path)
-
     db_path = Path(db_path)
+    _safety_check(db_path)
 
     if db_path.exists():
         if overwrite:

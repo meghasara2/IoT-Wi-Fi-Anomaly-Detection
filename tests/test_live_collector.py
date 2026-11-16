@@ -1128,126 +1128,141 @@ class TestCollectorChannelAlignmentStage84:
         from src.live_interface_resolver import ChannelAlignmentStatus
         collector = self._setup_collector(test_db, no_sensors=True)
 
-        with patch("src.live_collector.query_windows_hotspot_channel", return_value=(6, "Local Area Connection* 2", None, "Hotspot on Channel 6")):
-            with patch.object(collector, "_network_loop"):
-                collector.start(interface_name="Local Area Connection* 2")
+        try:
+            with patch("src.live_collector.query_windows_hotspot_channel", return_value=(6, "Local Area Connection* 2", None, "Hotspot on Channel 6")):
+                with patch.object(collector, "_network_loop"):
+                    collector.start(interface_name="Local Area Connection* 2")
 
-        # Worker health exposes channel_diagnostic
-        health = collector.get_worker_health()
-        assert "channel_diagnostic" in health
-        assert collector._channel_diagnostic is not None
-        diag_dict = health["channel_diagnostic"]
-        # Before handshake, ESP32 channel MUST NOT assume 6!
-        assert diag_dict["status"] == ChannelAlignmentStatus.CHANNEL_UNAVAILABLE
-        assert diag_dict["status"] != ChannelAlignmentStatus.CHANNEL_ALIGNED
-        assert diag_dict["esp32_channel"] is None
-        assert diag_dict["hotspot_channel"] == 6
-        assert diag_dict["esp32_source"] == "UNAVAILABLE"
-        assert "unverified" in diag_dict["explanation"].lower()
+            # Worker health exposes channel_diagnostic
+            health = collector.get_worker_health()
+            assert "channel_diagnostic" in health
+            assert collector._channel_diagnostic is not None
+            diag_dict = health["channel_diagnostic"]
+            # Before handshake, ESP32 channel MUST NOT assume 6!
+            assert diag_dict["status"] == ChannelAlignmentStatus.CHANNEL_UNAVAILABLE
+            assert diag_dict["status"] != ChannelAlignmentStatus.CHANNEL_ALIGNED
+            assert diag_dict["esp32_channel"] is None
+            assert diag_dict["hotspot_channel"] == 6
+            assert diag_dict["esp32_source"] == "UNAVAILABLE"
+            assert "unverified" in diag_dict["explanation"].lower()
 
-        # Verify sidecar diagnostic file was created with run_id
-        sidecar = test_db.parent / f"{test_db.stem}_diagnostic.json"
-        assert sidecar.exists()
-        import json
-        with open(sidecar, "r", encoding="utf-8") as f:
-            saved_data = json.load(f)
-        assert saved_data["run_id"] == collector._run_id
+            # Verify sidecar diagnostic file was created with run_id
+            sidecar = test_db.parent / f"{test_db.stem}_diagnostic.json"
+            assert sidecar.exists()
+            import json
+            with open(sidecar, "r", encoding="utf-8") as f:
+                saved_data = json.load(f)
+            assert saved_data["run_id"] == collector._run_id
+        finally:
+            collector.stop()
 
     def test_collector_startup_resilient_to_channel_diagnostic_crash(self, test_db):
         """Scenario 9b: Collector start() never fails even if check_hotspot_channel_alignment crashes."""
         collector = self._setup_collector(test_db, no_sensors=True)
 
-        with patch("src.live_collector.query_windows_hotspot_channel", side_effect=RuntimeError("Simulated netsh crash")):
-            with patch.object(collector, "_network_loop"):
-                collector.start(interface_name="Local Area Connection* 2")
+        try:
+            with patch("src.live_collector.query_windows_hotspot_channel", side_effect=RuntimeError("Simulated netsh crash")):
+                with patch.object(collector, "_network_loop"):
+                    collector.start(interface_name="Local Area Connection* 2")
 
-        # Collector must still start successfully into RUNNING state
-        assert collector._status == "RUNNING"
-        health = collector.get_worker_health()
-        assert health["status"] == "RUNNING"
+            # Collector must still start successfully into RUNNING state
+            assert collector._status == "RUNNING"
+            health = collector.get_worker_health()
+            assert health["status"] == "RUNNING"
+        finally:
+            collector.stop()
 
     def test_handshake_arriving_after_startup_transitions_to_aligned_without_subprocess(self, test_db):
         """Scenario 10a: Delayed handshake arriving after startup transitions status to ALIGNED without new subprocess."""
         from src.live_interface_resolver import ChannelAlignmentStatus
         collector = self._setup_collector(test_db, no_sensors=False)
 
-        # 1. Start collector: Hotspot channel is 6, but ESP32 channel is not yet received
-        with patch("src.live_collector.query_windows_hotspot_channel", return_value=(6, "Local Area Connection* 2", None, "Hotspot on Channel 6")):
-            with patch.object(collector, "_network_loop"), patch.object(collector, "_serial_loop"):
-                collector.start(interface_name="Local Area Connection* 2")
+        try:
+            # 1. Start collector: Hotspot channel is 6, but ESP32 channel is not yet received
+            with patch("src.live_collector.query_windows_hotspot_channel", return_value=(6, "Local Area Connection* 2", None, "Hotspot on Channel 6")):
+                with patch.object(collector, "_network_loop"), patch.object(collector, "_serial_loop"):
+                    collector.start(interface_name="Local Area Connection* 2")
 
-        # Prior to handshake: strictly UNAVAILABLE
-        assert collector._channel_diagnostic.status == ChannelAlignmentStatus.CHANNEL_UNAVAILABLE
-        assert collector._channel_diagnostic.esp32_channel is None
+            # Prior to handshake: strictly UNAVAILABLE
+            assert collector._channel_diagnostic.status == ChannelAlignmentStatus.CHANNEL_UNAVAILABLE
+            assert collector._channel_diagnostic.esp32_channel is None
 
-        # 2. ESP32 handshake arrives later with Channel 6
-        handshake_payload = {
-            "status": "WIFI_SNIFFER_INITIALIZED",
-            "boot_id": 1001,
-            "nonce": 5555,
-            "channel": 6,
-        }
-        collector._expected_probe_nonce = 5555
+            # 2. ESP32 handshake arrives later with Channel 6
+            handshake_payload = {
+                "status": "WIFI_SNIFFER_INITIALIZED",
+                "boot_id": 1001,
+                "nonce": 5555,
+                "channel": 6,
+            }
+            collector._expected_probe_nonce = 5555
 
-        # Verify NO new subprocess is spawned during the handshake update!
-        with patch("subprocess.run") as mock_subproc:
-            verdict = collector._handle_sniffer_status(handshake_payload)
-            mock_subproc.assert_not_called()
+            # Verify NO new subprocess is spawned during the handshake update!
+            with patch("subprocess.run") as mock_subproc:
+                verdict = collector._handle_sniffer_status(handshake_payload)
+                mock_subproc.assert_not_called()
 
-        assert verdict == "SNIFFER_STATUS"
-        # Hardware channel verified and re-evaluated against cached hotspot channel 6
-        assert collector._esp32_hardware_channel == 6
-        assert collector._channel_diagnostic.esp32_channel == 6
-        assert collector._channel_diagnostic.esp32_source == "FIRMWARE_HANDSHAKE"
-        assert collector._channel_diagnostic.status == ChannelAlignmentStatus.CHANNEL_ALIGNED
-        assert "aligned" in collector._channel_diagnostic.explanation.lower()
+            assert verdict == "SNIFFER_STATUS"
+            # Hardware channel verified and re-evaluated against cached hotspot channel 6
+            assert collector._esp32_hardware_channel == 6
+            assert collector._channel_diagnostic.esp32_channel == 6
+            assert collector._channel_diagnostic.esp32_source == "FIRMWARE_HANDSHAKE"
+            assert collector._channel_diagnostic.status == ChannelAlignmentStatus.CHANNEL_ALIGNED
+            assert "aligned" in collector._channel_diagnostic.explanation.lower()
+        finally:
+            collector.stop()
 
     def test_handshake_arriving_with_mismatch_transitions_to_mismatch(self, test_db):
         """Scenario 10b: Handshake with mismatched channel transitions status to CHANNEL_MISMATCH."""
         from src.live_interface_resolver import ChannelAlignmentStatus
         collector = self._setup_collector(test_db, no_sensors=False)
 
-        with patch("src.live_collector.query_windows_hotspot_channel", return_value=(6, "Local Area Connection* 2", None, "Hotspot on Channel 6")):
-            with patch.object(collector, "_network_loop"), patch.object(collector, "_serial_loop"):
-                collector.start(interface_name="Local Area Connection* 2")
+        try:
+            with patch("src.live_collector.query_windows_hotspot_channel", return_value=(6, "Local Area Connection* 2", None, "Hotspot on Channel 6")):
+                with patch.object(collector, "_network_loop"), patch.object(collector, "_serial_loop"):
+                    collector.start(interface_name="Local Area Connection* 2")
 
-        # Handshake arrives reporting Channel 1 (Hotspot is 6)
-        handshake_payload = {
-            "status": "WIFI_SNIFFER_INITIALIZED",
-            "boot_id": 1002,
-            "nonce": 7777,
-            "channel": 1,
-        }
-        collector._expected_probe_nonce = 7777
-        verdict = collector._handle_sniffer_status(handshake_payload)
-        assert verdict == "SNIFFER_STATUS"
+            # Handshake arrives reporting Channel 1 (Hotspot is 6)
+            handshake_payload = {
+                "status": "WIFI_SNIFFER_INITIALIZED",
+                "boot_id": 1002,
+                "nonce": 7777,
+                "channel": 1,
+            }
+            collector._expected_probe_nonce = 7777
+            verdict = collector._handle_sniffer_status(handshake_payload)
+            assert verdict == "SNIFFER_STATUS"
 
-        assert collector._esp32_hardware_channel == 1
-        assert collector._channel_diagnostic.esp32_channel == 1
-        assert collector._channel_diagnostic.status == ChannelAlignmentStatus.CHANNEL_MISMATCH
-        assert "MISMATCH" in collector._channel_diagnostic.explanation
+            assert collector._esp32_hardware_channel == 1
+            assert collector._channel_diagnostic.esp32_channel == 1
+            assert collector._channel_diagnostic.status == ChannelAlignmentStatus.CHANNEL_MISMATCH
+            assert "MISMATCH" in collector._channel_diagnostic.explanation
+        finally:
+            collector.stop()
 
     def test_handshake_with_missing_or_invalid_channel_strictly_unavailable(self, test_db):
         """Scenario 10c: Handshake with missing or out-of-range channel strictly sets CHANNEL_UNAVAILABLE."""
         from src.live_interface_resolver import ChannelAlignmentStatus
         collector = self._setup_collector(test_db, no_sensors=False)
 
-        with patch("src.live_collector.query_windows_hotspot_channel", return_value=(6, "Local Area Connection* 2", None, "Hotspot on Channel 6")):
-            with patch.object(collector, "_network_loop"), patch.object(collector, "_serial_loop"):
-                collector.start(interface_name="Local Area Connection* 2")
+        try:
+            with patch("src.live_collector.query_windows_hotspot_channel", return_value=(6, "Local Area Connection* 2", None, "Hotspot on Channel 6")):
+                with patch.object(collector, "_network_loop"), patch.object(collector, "_serial_loop"):
+                    collector.start(interface_name="Local Area Connection* 2")
 
-        # Handshake arrives with invalid channel (99)
-        handshake_payload = {
-            "status": "WIFI_SNIFFER_INITIALIZED",
-            "boot_id": 1003,
-            "nonce": 8888,
-            "channel": 99,
-        }
-        collector._expected_probe_nonce = 8888
-        collector._handle_sniffer_status(handshake_payload)
+            # Handshake arrives with invalid channel (99)
+            handshake_payload = {
+                "status": "WIFI_SNIFFER_INITIALIZED",
+                "boot_id": 1003,
+                "nonce": 8888,
+                "channel": 99,
+            }
+            collector._expected_probe_nonce = 8888
+            collector._handle_sniffer_status(handshake_payload)
 
-        assert collector._esp32_hardware_channel is None
-        assert collector._channel_diagnostic.status == ChannelAlignmentStatus.CHANNEL_UNAVAILABLE
+            assert collector._esp32_hardware_channel is None
+            assert collector._channel_diagnostic.status == ChannelAlignmentStatus.CHANNEL_UNAVAILABLE
+        finally:
+            collector.stop()
         assert collector._channel_diagnostic.status != ChannelAlignmentStatus.CHANNEL_ALIGNED
         assert collector._channel_diagnostic.esp32_channel is None
         assert collector._channel_diagnostic.esp32_source == "UNAVAILABLE"

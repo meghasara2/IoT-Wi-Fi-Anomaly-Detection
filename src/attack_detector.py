@@ -350,6 +350,14 @@ class DoSDetector:
         if len(self._history[mac]) > 10:
             self._history[mac] = self._history[mac][-10:]
 
+        # Prune stale MAC entries older than 300 seconds to prevent unbounded memory growth
+        stale_macs = [
+            m for m, hist in self._history.items()
+            if not hist or (now - hist[-1][0] > 300.0)
+        ]
+        for m in stale_macs:
+            del self._history[m]
+
         # Check fleet-wide surge: Are other devices surging simultaneously?
         # A legitimate multi-device fleet surge requires at least 2 distinct devices surging concurrently.
         if fleet_windows and len(fleet_windows) > 1:
@@ -751,15 +759,17 @@ class PortScanDetector:
                 src_mac=p.eth_src.strip().lower() if p.eth_src else None,
             ))
 
-        # Evaluate each source in the current window
-        findings = []
-        for src, records in self._history.items():
-            # Filter to sliding window
-            active_records = [r for r in records if now - r.timestamp <= self.window_duration_seconds]
-            self._history[src] = active_records
-
+        # Prune inactive sources to avoid memory and iteration leaks
+        for src in list(self._history.keys()):
+            active_records = [r for r in self._history[src] if now - r.timestamp <= self.window_duration_seconds]
             if not active_records:
-                continue
+                del self._history[src]
+            else:
+                self._history[src] = active_records
+
+        # Evaluate each active source in the current window
+        findings = []
+        for src, active_records in self._history.items():
 
             # Identify primary source MAC if available
             source_mac = None
@@ -1593,8 +1603,11 @@ class DeauthDetector:
             ))
 
         findings = []
-        for bssid, frames in self._history.items():
-            recent = [f for f in frames if now - f[0] <= self.window_seconds]
+        for bssid in list(self._history.keys()):
+            recent = [f for f in self._history[bssid] if now - f[0] <= self.window_seconds]
+            if not recent:
+                del self._history[bssid]
+                continue
             self._history[bssid] = recent
             if len(recent) >= self.flood_rate_threshold:
                 reason_codes = [f[2] for f in recent if f[2] is not None]

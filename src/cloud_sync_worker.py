@@ -26,14 +26,20 @@ import json
 import logging
 import os
 import sqlite3
+import sys
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+_HERE = Path(__file__).resolve().parent
+_PROJECT_ROOT = _HERE.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 try:
     from dotenv import load_dotenv
-    _env_path = Path(__file__).resolve().parent.parent / ".env"
+    _env_path = _PROJECT_ROOT / ".env"
     if _env_path.exists():
         load_dotenv(dotenv_path=_env_path)
     else:
@@ -50,19 +56,34 @@ except ImportError:
     extras = None
     PSYCOPG2_AVAILABLE = False
 
-from src.cloud_sync_outbox import (
-    OutboxPriority,
-    OutboxStatus,
-    enforce_queue_capacity,
-    fetch_pending_batch,
-    get_outbox_metrics,
-    init_outbox_schema,
-    mark_delivered,
-    mark_in_flight,
-    mark_retry_failed,
-    prune_delivered,
-    recover_stale_in_flight,
-)
+try:
+    from src.cloud_sync_outbox import (
+        OutboxPriority,
+        OutboxStatus,
+        enforce_queue_capacity,
+        fetch_pending_batch,
+        get_outbox_metrics,
+        init_outbox_schema,
+        mark_delivered,
+        mark_in_flight,
+        mark_retry_failed,
+        prune_delivered,
+        recover_stale_in_flight,
+    )
+except ModuleNotFoundError:
+    from cloud_sync_outbox import (
+        OutboxPriority,
+        OutboxStatus,
+        enforce_queue_capacity,
+        fetch_pending_batch,
+        get_outbox_metrics,
+        init_outbox_schema,
+        mark_delivered,
+        mark_in_flight,
+        mark_retry_failed,
+        prune_delivered,
+        recover_stale_in_flight,
+    )
 
 logger = logging.getLogger("CloudSyncWorker")
 

@@ -39,11 +39,13 @@ Thread Safety:
   is responsible for thread lifecycle management.
 """
 
+import atexit
+import datetime
 import math
 import subprocess
-import time
-import datetime
+import sys
 import threading
+import time
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple, Iterator, Set
 
@@ -471,6 +473,7 @@ class LiveStreamExtractor:
 
         # State
         self._proc: Optional[subprocess.Popen] = None
+        self._stderr_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
 
         # Accumulation buffers: mac → list of packets in current bin
@@ -518,19 +521,65 @@ class LiveStreamExtractor:
         )
         self._stop_event.clear()
 
+        # Dedicated daemon thread to drain stderr continuously to prevent pipe buffer deadlock
+        def _drain_stderr(proc: subprocess.Popen) -> None:
+            try:
+                if proc.stderr is not None:
+                    for line in iter(proc.stderr.readline, ""):
+                        if not line:
+                            break
+            except Exception:
+                pass
+            finally:
+                if proc.stderr is not None:
+                    try:
+                        proc.stderr.close()
+                    except Exception:
+                        pass
+
+        self._stderr_thread = threading.Thread(
+            target=_drain_stderr,
+            args=(self._proc,),
+            daemon=True,
+            name="TSharkStderrDrainer",
+        )
+        self._stderr_thread.start()
+
+        # Register exit hook to prevent orphan / zombie processes on unexpected interpreter exit
+        try:
+            atexit.register(self.stop)
+        except Exception:
+            pass
+
     def stop(self) -> None:
-        """Signals the extractor to stop and terminates tshark."""
+        """Signals the extractor to stop and terminates tshark and child processes (dumpcap)."""
         self._stop_event.set()
         if self._proc is not None:
+            proc = self._proc
+            self._proc = None
             try:
-                self._proc.terminate()
-                self._proc.wait(timeout=5)
+                # On Windows, kill entire process tree (/T) to ensure child dumpcap.exe is terminated
+                if sys.platform == "win32" and hasattr(proc, "pid") and proc.pid:
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                        capture_output=True,
+                        timeout=5,
+                    )
+                else:
+                    proc.terminate()
+                    proc.wait(timeout=3)
             except Exception:
                 try:
-                    self._proc.kill()
+                    proc.kill()
                 except Exception:
                     pass
-            self._proc = None
+
+        try:
+            atexit.unregister(self.stop)
+        except Exception:
+            pass
+
+        self._stderr_thread = None
 
     @property
     def is_running(self) -> bool:

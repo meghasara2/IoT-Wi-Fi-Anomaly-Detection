@@ -4,6 +4,8 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.venv/
+venv/
 
 # Environment files and credentials (Zero secrets in Git)
 .env

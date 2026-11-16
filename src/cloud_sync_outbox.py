@@ -535,9 +535,14 @@ def mark_retry_failed(
     backoff = calculate_backoff(retry_count)
     next_retry = now_epoch + backoff
 
-    # Tier 1 & 2 never transition to FAILED: security events retry indefinitely
+    # Tier 1 & 2 never transition to FAILED under transient network drops,
+    # but after extensive retries (e.g. fatal constraint/foreign key violation),
+    # transition to FAILED to prevent poison-pill queue lockup.
     if priority_tier in (OutboxPriority.TIER_1_CRITICAL, OutboxPriority.TIER_2_IMPORTANT):
-        new_status = OutboxStatus.PENDING.value
+        if retry_count >= 30 and any(k in error_msg.lower() for k in ["constraint", "key", "not present in table"]):
+            new_status = OutboxStatus.FAILED.value
+        else:
+            new_status = OutboxStatus.PENDING.value
     else:
         new_status = OutboxStatus.FAILED.value if retry_count >= max_retries else OutboxStatus.PENDING.value
 

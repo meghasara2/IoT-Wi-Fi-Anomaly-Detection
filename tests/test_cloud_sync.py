@@ -62,8 +62,13 @@ def temp_db():
     init_outbox_schema(conn)
     conn.close()
     yield db_path
-    if db_path.exists():
-        db_path.unlink()
+    import gc
+    gc.collect()
+    try:
+        if db_path.exists():
+            db_path.unlink()
+    except PermissionError:
+        pass
 
 
 def test_outbox_schema_init(temp_db):

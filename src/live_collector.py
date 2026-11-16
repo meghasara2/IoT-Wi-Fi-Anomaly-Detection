@@ -43,6 +43,8 @@ Safety:
 """
 
 import argparse
+import atexit
+import datetime
 import ipaddress
 import json
 import math
@@ -1105,6 +1107,10 @@ class LiveCollector:
 
         # Mark as RUNNING
         self._update_status("RUNNING")
+        try:
+            atexit.register(self.stop)
+        except Exception:
+            pass
         print("[COLLECTOR] Both threads started. Press Ctrl+C to stop.")
 
     def stop(self, reason: str = "User requested stop") -> None:
@@ -1117,11 +1123,18 @@ class LiveCollector:
             self._serial_connected = False
             self._serial_reconnecting = False
 
+        # CRITICAL: Stop extractor immediately to break out of blocking iter_windows() and kill tshark/dumpcap process tree
+        if self._extractor is not None:
+            try:
+                self._extractor.stop()
+            except Exception as e:
+                print(f"[COLLECTOR][WARN] Error stopping extractor: {e}")
+
         if self._net_thread and self._net_thread.is_alive():
-            self._net_thread.join(timeout=10)
+            self._net_thread.join(timeout=5)
 
         if self._serial_thread and self._serial_thread.is_alive():
-            self._serial_thread.join(timeout=5)
+            self._serial_thread.join(timeout=3)
 
         if self._sync_worker:
             try:
@@ -1129,6 +1142,11 @@ class LiveCollector:
                 print("[COLLECTOR] CloudSyncWorker stopped.")
             except Exception as e:
                 print(f"[COLLECTOR][WARN] Error stopping CloudSyncWorker: {e}")
+
+        try:
+            atexit.unregister(self.stop)
+        except Exception:
+            pass
 
         self._update_status("STOPPED", stop_reason=reason)
         self._print_final_stats()
@@ -2831,18 +2849,21 @@ def main() -> None:
             "          ESP32 connected via USB (optional with --no-sensors)."
         )
     )
+    env_interface = os.getenv("COLLECTOR_INTERFACE_INDEX")
+    default_interface = int(env_interface) if env_interface and env_interface.strip().isdigit() else None
     parser.add_argument(
         "--interface",
         type=int,
-        default=None,
+        default=default_interface,
         help="TShark interface index (from 'tshark -D'). "
-             "Auto-detected if omitted.",
+             "Auto-detected if omitted (or from COLLECTOR_INTERFACE_INDEX in .env).",
     )
+    env_port = os.getenv("SERIAL_PORT", DEFAULT_SERIAL_PORT)
     parser.add_argument(
         "--port",
         type=str,
-        default=DEFAULT_SERIAL_PORT,
-        help=f"ESP32 COM port (default: {DEFAULT_SERIAL_PORT}).",
+        default=env_port,
+        help=f"ESP32 COM port (default: {env_port}).",
     )
     parser.add_argument(
         "--db-path",
@@ -2855,6 +2876,12 @@ def main() -> None:
         type=str,
         default=str(DEFAULT_SESSION1_PATH),
         help="Session 1 training CSV for frozen detector.",
+    )
+    parser.add_argument(
+        "--tshark-path",
+        type=str,
+        default=os.getenv("TSHARK_PATH", TSHARK_DEFAULT_PATH),
+        help=f"Path to tshark executable (default: {TSHARK_DEFAULT_PATH}).",
     )
     parser.add_argument(
         "--no-sensors",
@@ -2993,6 +3020,7 @@ def main() -> None:
         db_path=db_path,
         session1_csv=Path(args.session1_csv),
         no_sensors=args.no_sensors,
+        tshark_path=args.tshark_path,
         gateway_mac=args.gateway_mac,
         port_scan_cooldown_seconds=args.port_scan_cooldown,
         dos_cooldown_seconds=args.dos_cooldown,

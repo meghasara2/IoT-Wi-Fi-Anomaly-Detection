@@ -19,17 +19,21 @@ echo                  SOC Live Monitoring Dashboard
 echo =========================================================================
 echo.
 
-:: 1. Locate Python executable (check .venv first, then system python)
-if exist ".venv\Scripts\python.exe" (
+:: 1. Locate Python executable (check .venv with streamlit first, then system python, then .venv python)
+if exist ".venv\Scripts\streamlit.exe" (
     set "PYTHON_EXE=.venv\Scripts\python.exe"
     set "STREAMLIT_EXE=.venv\Scripts\streamlit.exe"
-    echo [INFO] Found virtual environment in .venv
+    echo [INFO] Found virtual environment in .venv with Streamlit
 ) else (
     where python >nul 2>&1
     if !errorlevel! equ 0 (
         set "PYTHON_EXE=python"
         set "STREAMLIT_EXE=streamlit"
         echo [INFO] Using system Python
+    ) else if exist ".venv\Scripts\python.exe" (
+        set "PYTHON_EXE=.venv\Scripts\python.exe"
+        set "STREAMLIT_EXE=.venv\Scripts\streamlit.exe"
+        echo [INFO] Found virtual environment in .venv
     ) else (
         color 0C
         echo [ERROR] Python was not found!

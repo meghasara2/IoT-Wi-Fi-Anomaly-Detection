@@ -45,6 +45,7 @@ Safety:
 import argparse
 import atexit
 import datetime
+import http.server
 import ipaddress
 import json
 import math
@@ -52,6 +53,7 @@ import os
 import queue
 import re
 import secrets
+import socketserver
 import sqlite3
 import sys
 import threading
@@ -256,6 +258,10 @@ HEARTBEAT_INTERVAL_SEC = 10.0
 
 # Maximum consecutive serial errors before giving up
 MAX_SERIAL_ERRORS = 20
+
+# Wi-Fi Telemetry Receiver defaults (wireless HTTP REST ingestion)
+DEFAULT_WIFI_HOST = "0.0.0.0"
+DEFAULT_WIFI_PORT = 5000
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Wi-Fi sniffer telemetry validation functions (Stage 4.3.1)
@@ -838,6 +844,105 @@ def _nan_to_none(v: Any) -> Any:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Wi-Fi Telemetry HTTP Server & Request Handler
+# ─────────────────────────────────────────────────────────────────────────────
+class TelemetryHttpServer(http.server.ThreadingHTTPServer):
+    """Multi-threaded HTTP server enabling address reuse and daemon worker threads."""
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+class TelemetryRequestHandler(http.server.BaseHTTPRequestHandler):
+    """
+    HTTP Request Handler for receiving ESP32 sensor telemetry and status queries
+    over Wi-Fi REST API.
+    """
+    collector: Optional["LiveCollector"] = None
+
+    def log_message(self, format: str, *args: Any) -> None:
+        # Suppress routine 200 OK access logs from flooding collector console
+        pass
+
+    def do_GET(self) -> None:
+        if self.path in ("/api/status", "/status"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            stats = self.collector.stats if self.collector else {}
+            mode = getattr(self.collector, "mode", "wifi")
+            payload = {
+                "status": "ONLINE",
+                "mode": mode,
+                "sensor_records": stats.get("sensor_records", 0),
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            }
+            self.wfile.write(json.dumps(payload).encode("utf-8"))
+        elif self.path in ("/api/ping", "/ping"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(b'{"status":"PONG"}')
+        else:
+            self.send_response(404)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"NOT_FOUND"}')
+
+    def do_POST(self) -> None:
+        if self.path in ("/api/telemetry", "/telemetry", "/"):
+            content_length = int(self.headers.get("Content-Length", 0))
+            if content_length <= 0:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(b'{"status":"ERROR","message":"Empty request body"}')
+                return
+
+            body = self.rfile.read(content_length).decode("utf-8", errors="replace")
+            result = None
+            if self.collector is not None:
+                for line in body.strip().splitlines():
+                    line = line.strip()
+                    if line:
+                        result = self.collector.process_serial_line(line, source="wifi")
+
+            if result in (
+                "SENSOR_TELEMETRY",
+                "BOOT_ANNOUNCEMENT",
+                "SNIFFER_STATUS",
+                "WIFI_MGMT_EVENT",
+                "WIFI_MGMT_SUMMARY",
+                "CHANNEL_CONFIGURED",
+                "PONG",
+            ):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "OK", "result": result}).encode("utf-8"))
+            elif result == "INVALID_SENSOR":
+                self.send_response(422)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "INVALID", "message": "Sensor payload validation failed"}).encode("utf-8"))
+            else:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "ERROR", "message": str(result)}).encode("utf-8"))
+        else:
+            self.send_response(404)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"status":"NOT_FOUND"}')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # LiveCollector
 # ─────────────────────────────────────────────────────────────────────────────
 class LiveCollector:
@@ -878,6 +983,9 @@ class LiveCollector:
         deauth_cooldown_seconds: float = 60.0,
         enable_cloud_sync: bool = False,
         sync_worker: Optional[Any] = None,
+        mode: str = "dual",
+        wifi_host: str = DEFAULT_WIFI_HOST,
+        wifi_port: int = DEFAULT_WIFI_PORT,
     ) -> None:
         self.interface_index = interface_index
         self.serial_port = serial_port
@@ -885,6 +993,9 @@ class LiveCollector:
         self.session1_csv = Path(session1_csv)
         self.device_registry = device_registry or dict(DEFAULT_DEVICE_REGISTRY)
         self.no_sensors = no_sensors
+        self.mode = mode.lower().strip() if mode else "dual"
+        self.wifi_host = wifi_host
+        self.wifi_port = int(wifi_port)
         self.tshark_path = tshark_path
         self.tshark_extra_args = tshark_extra_args or []
         raw_gw = gateway_mac if gateway_mac else resolve_gateway_mac("192.168.137.1")
@@ -907,6 +1018,10 @@ class LiveCollector:
         self._stop_event = threading.Event()
         self._net_thread: Optional[threading.Thread] = None
         self._serial_thread: Optional[threading.Thread] = None
+        self._http_server: Optional[TelemetryHttpServer] = None
+        self._wifi_thread: Optional[threading.Thread] = None
+        self._wifi_worker_failed: bool = False
+        self._wifi_failure_reason: Optional[str] = None
         self._run_id: Optional[int] = None
         self._attack_table_present: bool = False
 
@@ -998,6 +1113,9 @@ class LiveCollector:
             "wifi_mgmt_disassoc_events_mapped": 0,
             "wifi_mgmt_dropped_unsupported_subtype": 0,
             "wifi_mgmt_exceptions": 0,
+            # Wi-Fi HTTP telemetry stats
+            "wifi_telemetry_records": 0,
+            "wifi_http_requests": 0,
             # Database reliability and write recovery stats (Stage 6.5.4)
             "db_transient_write_retries": 0,
             "db_window_write_failures": 0,
@@ -1127,10 +1245,16 @@ class LiveCollector:
             except Exception as e:
                 print(f"[COLLECTOR][WARN] Could not seed baseline attack status: {e}")
 
+        mode_str = self.mode.upper()
+        sensors_str = "disabled" if self.no_sensors else (
+            f"Wi-Fi HTTP ({self.wifi_host}:{self.wifi_port})" if self.mode == "wifi"
+            else f"Serial ({self.serial_port})" if self.mode == "serial"
+            else f"Dual [Wi-Fi HTTP ({self.wifi_host}:{self.wifi_port}) + Serial ({self.serial_port})]"
+        )
         print(
             f"[COLLECTOR] Starting run_id={self._run_id} | "
             f"Interface={self.interface_index} | "
-            f"Serial={'disabled' if self.no_sensors else self.serial_port}"
+            f"Mode={mode_str} | Telemetry={sensors_str}"
         )
         if self.gateway_mac:
             print(f"[COLLECTOR] Hotspot Gateway MAC verified: {self.gateway_mac}")
@@ -1150,7 +1274,12 @@ class LiveCollector:
         )
         self._net_thread.start()
 
-        if not self.no_sensors:
+        # Start Wi-Fi HTTP telemetry receiver (when in wifi or dual mode and sensors enabled)
+        if not self.no_sensors and self.mode in ("wifi", "dual"):
+            self._start_wifi_server()
+
+        # Start Serial ingestion thread (when in serial or dual mode and sensors enabled)
+        if not self.no_sensors and self.mode in ("serial", "dual"):
             self._serial_thread = threading.Thread(
                 target=self._serial_loop,
                 name="LiveCollector-Serial",
@@ -1172,10 +1301,33 @@ class LiveCollector:
             atexit.register(self.stop)
         except Exception:
             pass
-        print("[COLLECTOR] Both threads started. Press Ctrl+C to stop.")
+        print(f"[COLLECTOR] Daemons started (Mode: {mode_str}). Press Ctrl+C to stop.")
+
+    def _start_wifi_server(self) -> None:
+        """Initializes and starts the background HTTP server for receiving Wi-Fi telemetry."""
+        try:
+            handler_class = TelemetryRequestHandler
+            handler_class.collector = self
+            self._http_server = TelemetryHttpServer((self.wifi_host, self.wifi_port), handler_class)
+            self.wifi_port = self._http_server.server_port
+            self._wifi_thread = threading.Thread(
+                target=self._http_server.serve_forever,
+                name="LiveCollector-WiFi-HTTP",
+                daemon=True,
+            )
+            self._wifi_thread.start()
+            print(
+                f"[WIFI] HTTP Telemetry Receiver listening on http://{self.wifi_host}:{self.wifi_port}/api/telemetry"
+            )
+        except Exception as e:
+            err_msg = f"Failed to start Wi-Fi HTTP telemetry server on {self.wifi_host}:{self.wifi_port}: {e}"
+            print(f"[WIFI][ERROR] {err_msg}")
+            with self._status_lock:
+                self._wifi_worker_failed = True
+                self._wifi_failure_reason = err_msg
 
     def stop(self, reason: str = "User requested stop") -> None:
-        """Signals both threads to stop and waits for clean shutdown."""
+        """Signals all threads to stop and waits for clean shutdown."""
         print(f"\n[COLLECTOR] Stopping: {reason}")
         self._stop_event.set()
         with self._status_lock:
@@ -1193,6 +1345,16 @@ class LiveCollector:
 
         if self._net_thread and self._net_thread.is_alive():
             self._net_thread.join(timeout=5)
+
+        if self._http_server is not None:
+            try:
+                self._http_server.shutdown()
+                self._http_server.server_close()
+            except Exception as e:
+                print(f"[COLLECTOR][WARN] Error stopping Wi-Fi HTTP server: {e}")
+
+        if self._wifi_thread and self._wifi_thread.is_alive():
+            self._wifi_thread.join(timeout=3)
 
         if self._serial_thread and self._serial_thread.is_alive():
             self._serial_thread.join(timeout=3)
@@ -1320,21 +1482,29 @@ class LiveCollector:
                 self._persist_status_locked("ERROR", err_reason)
                 return
 
-            # 4. Supervise Serial Worker Liveness (when sensors are enabled)
-            if not self.no_sensors:
+            # 4. Supervise Serial Worker Liveness (when sensors and serial mode are enabled)
+            if not self.no_sensors and self.mode in ("serial", "dual"):
                 if self._serial_thread is not None and not self._serial_thread.is_alive():
                     self._serial_worker_failed = True
                     self._serial_reconnecting = False
                     if not self._serial_failure_reason:
                         self._serial_failure_reason = "Serial worker thread terminated unexpectedly"
 
+            # 4b. Supervise Wi-Fi Worker Liveness (when sensors and wifi mode are enabled)
+            if not self.no_sensors and self.mode in ("wifi", "dual"):
+                if self._wifi_thread is not None and not self._wifi_thread.is_alive() and not self._stop_event.is_set():
+                    self._wifi_worker_failed = True
+                    if not self._wifi_failure_reason:
+                        self._wifi_failure_reason = "Wi-Fi HTTP worker thread terminated unexpectedly"
+
             # 5. Both required health checks passed -> Report RUNNING
-            # Accurately reflect serial worker status in stop_reason if it failed or is reconnecting
-            effective_stop_reason = (
-                self._serial_failure_reason
-                if (self._serial_worker_failed or getattr(self, "_serial_reconnecting", False))
-                else None
-            )
+            # Accurately reflect serial or wifi worker status in stop_reason if failed or reconnecting
+            effective_stop_reason = None
+            if self._serial_worker_failed or getattr(self, "_serial_reconnecting", False):
+                effective_stop_reason = self._serial_failure_reason
+            elif getattr(self, "_wifi_worker_failed", False):
+                effective_stop_reason = getattr(self, "_wifi_failure_reason", None)
+
             self._status = "RUNNING"
             self._stop_reason = effective_stop_reason
             self._persist_status_locked("RUNNING", effective_stop_reason)
@@ -1430,20 +1600,28 @@ class LiveCollector:
             net_alive = self._net_thread is not None and self._net_thread.is_alive()
             serial_alive = (
                 self._serial_thread is not None and self._serial_thread.is_alive()
-                if not self.no_sensors else True
+                if (not self.no_sensors and self.mode in ("serial", "dual")) else True
+            )
+            wifi_alive = (
+                self._wifi_thread is not None and self._wifi_thread.is_alive()
+                if (not self.no_sensors and self.mode in ("wifi", "dual")) else True
             )
             return {
                 "status": self._status,
                 "stop_reason": self._stop_reason,
+                "mode": self.mode,
                 "net_worker_alive": net_alive,
                 "serial_worker_alive": serial_alive,
+                "wifi_worker_alive": wifi_alive,
                 "serial_connected": getattr(self, "_serial_connected", False),
                 "serial_reconnecting": getattr(self, "_serial_reconnecting", False),
                 "current_serial_backoff": getattr(self, "_current_serial_backoff", 0.0),
                 "net_worker_failed": self._net_worker_failed,
                 "serial_worker_failed": self._serial_worker_failed,
+                "wifi_worker_failed": getattr(self, "_wifi_worker_failed", False),
                 "net_failure_reason": self._net_failure_reason,
                 "serial_failure_reason": self._serial_failure_reason,
+                "wifi_failure_reason": getattr(self, "_wifi_failure_reason", None),
                 "is_shutdown_requested": self._stop_event.is_set(),
                 "channel_diagnostic": (
                     self._channel_diagnostic.to_dict()
@@ -2698,9 +2876,9 @@ class LiveCollector:
             }
         return "WIFI_SUMMARY"
 
-    def process_serial_line(self, line_str: str) -> Optional[str]:
+    def process_serial_line(self, line_str: str, source: str = "serial") -> Optional[str]:
         """
-        Parses and routes a single line of decoded serial telemetry.
+        Parses and routes a single line of decoded telemetry (from USB serial or Wi-Fi REST).
         Distinguishes message types BEFORE passing to the sensor validator:
           1. Firmware boot announcements ('ESP32_TELEMETRY_INITIALIZED')
           2. Sniffer probe status responses ('WIFI_SNIFFER_INITIALIZED')
@@ -2713,22 +2891,24 @@ class LiveCollector:
             return None
 
         line_str = line_str.strip()
+        tag = "[WIFI]" if source == "wifi" else "[SERIAL]"
 
         # 1. Skip / log firmware boot announcements
         if "ESP32_TELEMETRY_INITIALIZED" in line_str:
-            print(f"[SERIAL][INFO] {line_str}")
+            print(f"{tag}[INFO] {line_str}")
             return "BOOT_ANNOUNCEMENT"
 
         # 2. JSON Decoding
         try:
             payload = json.loads(line_str)
         except json.JSONDecodeError:
-            print(f"[SERIAL][RAW] {line_str}")
-            self.stats["serial_raw_lines"] += 1
+            print(f"{tag}[RAW] {line_str}")
+            if source == "serial":
+                self.stats["serial_raw_lines"] += 1
             return "RAW_LOG"
 
         if not isinstance(payload, dict):
-            print(f"[SERIAL][INVALID] Non-dict JSON payload: {type(payload)}")
+            print(f"{tag}[INVALID] Non-dict JSON payload: {type(payload)}")
             return "INVALID_JSON"
 
         # 3. Message Type Routing (BEFORE reaching sensor validator)
@@ -2738,7 +2918,7 @@ class LiveCollector:
 
         if payload.get("status") == "CHANNEL_CONFIGURED":
             conf_chan = payload.get("channel")
-            print(f"[SERIAL][INFO] Hardware channel successfully configured to: {conf_chan}")
+            print(f"{tag}[INFO] Hardware channel successfully configured to: {conf_chan}")
             if conf_chan is not None:
                 self._update_channel_alignment_with_hardware_channel(conf_chan)
             return "CHANNEL_CONFIGURED"
@@ -2759,17 +2939,25 @@ class LiveCollector:
         if "node" in payload:
             is_valid, msg = validate_payload(payload)
             if not is_valid:
-                print(f"[SERIAL][INVALID] {msg}")
+                print(f"{tag}[INVALID] {msg}")
                 self.stats["sensor_payloads_invalid"] += 1
                 return "INVALID_SENSOR"
 
             sensor_epoch = time.time()
-            self._persist_sensor_with_retry(payload, sensor_epoch)
+            persisted = self._persist_sensor_with_retry(payload, sensor_epoch)
+            if source == "wifi":
+                self.stats["wifi_telemetry_records"] += 1
+            if persisted:
+                print(f"{tag}[TELEMETRY] {format_display_row(payload)}")
             return "SENSOR_TELEMETRY"
 
         # E. Unrecognized JSON payload
-        print(f"[SERIAL][WARN] Unrecognized JSON payload: {payload}")
+        print(f"{tag}[WARN] Unrecognized JSON payload: {payload}")
         return "UNRECOGNIZED_JSON"
+
+    def process_telemetry_line(self, line_str: str, source: str = "wifi") -> Optional[str]:
+        """Convenience alias for process_serial_line when receiving Wi-Fi HTTP telemetry."""
+        return self.process_serial_line(line_str, source=source)
 
     # ─── Internal: Serial thread ──────────────────────────────────────────────
 
@@ -3082,6 +3270,24 @@ def main() -> None:
         default=False,
         help="Enable background cloud sync outbox worker to Supabase PostgreSQL pooler",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["wifi", "dual", "serial"],
+        default="wifi",
+        help="Telemetry ingestion mode: 'wifi' (wireless HTTP REST, default), 'dual' (both Wi-Fi HTTP and USB Serial), or 'serial' (USB Serial only).",
+    )
+    parser.add_argument(
+        "--wifi-host",
+        type=str,
+        default=os.getenv("COLLECTOR_WIFI_HOST", DEFAULT_WIFI_HOST),
+        help=f"Host IP to bind Wi-Fi HTTP telemetry receiver (default: {DEFAULT_WIFI_HOST}).",
+    )
+    parser.add_argument(
+        "--wifi-port",
+        type=int,
+        default=int(os.getenv("COLLECTOR_WIFI_PORT", str(DEFAULT_WIFI_PORT))),
+        help=f"Port for Wi-Fi HTTP telemetry receiver (default: {DEFAULT_WIFI_PORT}).",
+    )
 
     args = parser.parse_args()
     db_path = Path(args.db_path)
@@ -3161,6 +3367,9 @@ def main() -> None:
         spoofing_cooldown_seconds=args.spoofing_cooldown,
         deauth_cooldown_seconds=args.deauth_cooldown,
         enable_cloud_sync=args.cloud_sync,
+        mode=args.mode,
+        wifi_host=args.wifi_host,
+        wifi_port=args.wifi_port,
     )
     collector.start(interface_name=iface_name)
     collector.run_until_stopped()

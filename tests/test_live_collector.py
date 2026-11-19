@@ -20,6 +20,7 @@ All tests use a temporary in-memory or temp-file database.
 No real TShark process, no real serial port, no production files touched.
 """
 
+import json
 import math
 import sqlite3
 import sys
@@ -1266,4 +1267,171 @@ class TestCollectorChannelAlignmentStage84:
         assert collector._channel_diagnostic.status != ChannelAlignmentStatus.CHANNEL_ALIGNED
         assert collector._channel_diagnostic.esp32_channel is None
         assert collector._channel_diagnostic.esp32_source == "UNAVAILABLE"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 9: Wi-Fi REST Telemetry Ingestion Tests
+# ─────────────────────────────────────────────────────────────────────────────
+class TestWifiTelemetryHttpReceiver:
+    """Verifies that the collector accurately ingests sensor telemetry wirelessly over HTTP REST."""
+
+    @pytest.fixture
+    def test_db(self):
+        db_path = _temp_db()
+        init_live_database(db_path, seed_defaults=True)
+        yield db_path
+        if db_path.exists():
+            try:
+                db_path.unlink()
+            except Exception:
+                pass
+
+    def test_wifi_telemetry_get_status(self, test_db):
+        import urllib.request
+        collector = LiveCollector(
+            interface_index=1,
+            db_path=test_db,
+            mode="wifi",
+            wifi_host="127.0.0.1",
+            wifi_port=0,
+        )
+        try:
+            with patch.object(collector, "_network_loop"):
+                collector.start(interface_name="Local Area Connection* 2")
+
+            url = f"http://127.0.0.1:{collector.wifi_port}/api/status"
+            req = urllib.request.Request(url, method="GET")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                assert resp.status == 200
+                data = json.loads(resp.read().decode("utf-8"))
+                assert data["status"] == "ONLINE"
+                assert data["mode"] == "wifi"
+                assert "sensor_records" in data
+        finally:
+            collector.stop()
+
+    def test_wifi_telemetry_post_sensor_data(self, test_db):
+        import urllib.request
+        collector = LiveCollector(
+            interface_index=1,
+            db_path=test_db,
+            mode="wifi",
+            wifi_host="127.0.0.1",
+            wifi_port=0,
+        )
+        try:
+            with patch.object(collector, "_network_loop"):
+                collector.start(interface_name="Local Area Connection* 2")
+
+            payload = {
+                "node": "esp32_gateway",
+                "seq": 105,
+                "uptime_ms": 15000,
+                "dht11": {"valid": 1, "temp_c": 24.2, "humidity": 55.0},
+                "pir": {"motion": 1},
+            }
+            body = json.dumps(payload).encode("utf-8")
+            url = f"http://127.0.0.1:{collector.wifi_port}/api/telemetry"
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                assert resp.status == 200
+                resp_json = json.loads(resp.read().decode("utf-8"))
+                assert resp_json["status"] == "OK"
+                assert resp_json["result"] == "SENSOR_TELEMETRY"
+
+            assert collector.stats["sensor_records"] == 1
+            assert collector.stats["wifi_telemetry_records"] == 1
+
+            # Verify persisted database rows
+            db = get_live_db_connection(test_db)
+            try:
+                dht_row = db.execute("SELECT * FROM live_sensor_telemetry WHERE sequence_num=105").fetchone()
+                assert dht_row is not None
+                assert dht_row["logical_node_id"] == "Node_1"
+                assert dht_row["temperature_c"] == 24.2
+                assert dht_row["humidity_pct"] == 55.0
+                assert dht_row["dht_valid"] == 1
+
+                pir_row = db.execute("SELECT * FROM live_pir_events WHERE sequence_num=105").fetchone()
+                assert pir_row is not None
+                assert pir_row["logical_node_id"] == "Node_2"
+                assert pir_row["motion_detected"] == 1
+            finally:
+                db.close()
+        finally:
+            collector.stop()
+
+    def test_wifi_telemetry_post_invalid_and_empty(self, test_db):
+        import urllib.error
+        import urllib.request
+        collector = LiveCollector(
+            interface_index=1,
+            db_path=test_db,
+            mode="wifi",
+            wifi_host="127.0.0.1",
+            wifi_port=0,
+        )
+        try:
+            with patch.object(collector, "_network_loop"):
+                collector.start(interface_name="Local Area Connection* 2")
+
+            url = f"http://127.0.0.1:{collector.wifi_port}/api/telemetry"
+
+            # 1. Invalid temperature (150 C exceeds physical limit)
+            invalid_payload = {
+                "node": "esp32_gateway",
+                "seq": 106,
+                "uptime_ms": 16000,
+                "dht11": {"valid": 1, "temp_c": 150.0, "humidity": 55.0},
+                "pir": {"motion": 0},
+            }
+            body = json.dumps(invalid_payload).encode("utf-8")
+            req = urllib.request.Request(
+                url,
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                urllib.request.urlopen(req, timeout=3)
+            assert exc_info.value.code == 422
+
+            # 2. Empty request body
+            req_empty = urllib.request.Request(
+                url,
+                data=b"",
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with pytest.raises(urllib.error.HTTPError) as exc_info2:
+                urllib.request.urlopen(req_empty, timeout=3)
+            assert exc_info2.value.code == 400
+        finally:
+            collector.stop()
+
+    def test_wifi_mode_does_not_start_serial_thread(self, test_db):
+        collector = LiveCollector(
+            interface_index=1,
+            db_path=test_db,
+            mode="wifi",
+            wifi_host="127.0.0.1",
+            wifi_port=0,
+        )
+        try:
+            with patch.object(collector, "_network_loop"):
+                collector.start(interface_name="Local Area Connection* 2")
+
+            assert collector._serial_thread is None
+            health = collector.get_worker_health()
+            assert health["wifi_worker_alive"] is True
+            assert health["serial_worker_alive"] is True
+            assert health["mode"] == "wifi"
+        finally:
+            collector.stop()
+
 

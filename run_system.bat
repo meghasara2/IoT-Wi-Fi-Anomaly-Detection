@@ -57,8 +57,9 @@ if not exist "data\live_monitoring.db" (
 )
 
 :: 3. Launch Backend Collector Daemon in a separate terminal window
-echo [INFO] Starting Live Ingestion Collector (ESP32 Serial + Wi-Fi Sniffer)...
-start "IoT Wi-Fi Ingestion Collector" cmd /k "title IoT Wi-Fi Ingestion Collector && color 0B && cd /d ""%~dp0"" && ""%PYTHON_EXE%"" src\live_collector.py"
+echo [INFO] Starting Live Ingestion Collector (Wi-Fi REST Mode on port 5000)...
+echo [INFO] ESP32 will transmit sensor telemetry wirelessly over Wi-Fi!
+start "IoT Wi-Fi Ingestion Collector" cmd /k "title IoT Wi-Fi Ingestion Collector && color 0B && cd /d ""%~dp0"" && ""%PYTHON_EXE%"" src\live_collector.py --mode wifi --wifi-port 5000"
 
 :: Allow collector 2 seconds to establish database locks and initial handshake
 timeout /t 2 /nobreak >nul

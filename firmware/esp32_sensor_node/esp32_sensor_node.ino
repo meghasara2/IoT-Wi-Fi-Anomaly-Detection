@@ -1,5 +1,5 @@
 /*
- * Firmware: ESP32 Dual-Sensor Telemetry Node with Wi-Fi Management Sniffer
+ * Firmware: ESP32 Dual-Sensor Telemetry Node with Wi-Fi HTTP & Serial Transmission
  * Project: AI-Assisted IoT Wi-Fi Network Security and Anomaly Detection
  * Target Board: ESP32 Dev Module / NodeMCU-32S
  *
@@ -9,7 +9,14 @@
  *   - VCC: 3.3V
  *   - GND: Common GND
  *
- * Telemetry Outputs over Serial (UART) at 115200 baud:
+ * Data Transmission Modes:
+ *   1. Wireless Wi-Fi HTTP REST (Primary):
+ *      Connects to Wi-Fi (e.g. Windows Mobile Hotspot) and sends telemetry
+ *      via HTTP POST to http://<HOST_IP>:5000/api/telemetry.
+ *   2. USB Serial UART at 115200 baud (Concurrent / Fallback / Debug):
+ *      Streams identical JSON payloads to Serial for local monitoring.
+ *
+ * Telemetry Formats:
  *   1. Environmental Sensor Telemetry (every ~2.0s):
  *      {"node":"esp32_gateway","seq":<seq>,"uptime_ms":<millis>,"dht11":{"valid":<1|0>,"temp_c":<val|null>,"humidity":<val|null>},"pir":{"motion":<0|1>}}
  *   2. Wi-Fi Management Frame Events (Subtypes 10/12, Rate Limited to 10/s):
@@ -22,6 +29,7 @@
 
 #include "DHT.h"
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include "esp_wifi.h"
 #include "esp_wifi_types.h"
 #include "freertos/FreeRTOS.h"
@@ -36,6 +44,30 @@
 #define DHTPIN 4
 #define DHTTYPE DHT11
 #define PIRPIN 27
+
+// --- WI-FI STATION CREDENTIALS (FOR WIRELESS TRANSMISSION) ---
+// Set to your Windows Mobile Hotspot or local Wi-Fi router SSID and password
+#ifndef WIFI_SSID
+#define WIFI_SSID "IoT_Network_Guard"
+#endif
+
+#ifndef WIFI_PASSWORD
+#define WIFI_PASSWORD "12345678"
+#endif
+
+// --- TELEMETRY SERVER DESTINATION ---
+// Leave SERVER_HOST empty ("") to automatically route to WiFi.gatewayIP()
+// (standard for Windows Mobile Hotspot: 192.168.137.1).
+// Or set to an explicit IP string like "192.168.137.1" or "192.168.1.100".
+#ifndef SERVER_HOST
+#define SERVER_HOST ""
+#endif
+
+#ifndef SERVER_PORT
+#define SERVER_PORT 5000
+#endif
+
+#define TELEMETRY_ENDPOINT "/api/telemetry"
 
 // --- WI-FI SNIFFER CONFIGURATION ---
 // Configurable 2.4 GHz monitoring channel (default: Channel 6)
@@ -450,12 +482,40 @@ void emit_wifi_mgmt_summary(unsigned long now_ms) {
     }
 }
 
+// Send JSON telemetry over Wi-Fi via HTTP POST to the Host PC Collector
+bool send_http_telemetry(const String& jsonPayload) {
+    if (WiFi.status() != WL_CONNECTED) {
+        return false;
+    }
+
+    HTTPClient http;
+    String host = (strlen(SERVER_HOST) > 0) ? String(SERVER_HOST) : WiFi.gatewayIP().toString();
+    String url = "http://" + host + ":" + String(SERVER_PORT) + TELEMETRY_ENDPOINT;
+
+    if (!http.begin(url)) {
+        return false;
+    }
+
+    http.addHeader("Content-Type", "application/json");
+    http.setTimeout(1500); // 1.5s non-blocking timeout
+
+    int httpCode = http.POST(jsonPayload);
+    bool ok = (httpCode >= 200 && httpCode < 300);
+
+    if (!ok && httpCode != -1) {
+        Serial.print("[HTTP][ERROR] POST returned code: ");
+        Serial.println(httpCode);
+    }
+
+    http.end();
+    return ok;
+}
+
 // Initialize Wi-Fi promiscuous reception
 void init_wifi_sniffer() {
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
-    esp_wifi_set_channel(s_sniffer_channel, WIFI_SECOND_CHAN_NONE);
-
+    if (WiFi.status() != WL_CONNECTED) {
+        esp_wifi_set_channel(s_sniffer_channel, WIFI_SECOND_CHAN_NONE);
+    }
     wifi_promiscuous_filter_t filter = {
         .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT
     };
@@ -480,6 +540,29 @@ void setup() {
   // Emit startup announcement as a comment or info line (matches existing)
   Serial.println("{\"status\":\"ESP32_TELEMETRY_INITIALIZED\",\"baud\":115200}");
 
+  // Connect to Wi-Fi Network / Mobile Hotspot for Wireless Telemetry
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("[WIFI] Connecting to SSID: ");
+  Serial.println(WIFI_SSID);
+
+  unsigned long wifiStart = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - wifiStart < 8000)) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println();
+    Serial.print("[WIFI] Connected! ESP32 IP: ");
+    Serial.print(WiFi.localIP());
+    Serial.print(" | Gateway (Host PC): ");
+    Serial.println(WiFi.gatewayIP());
+  } else {
+    Serial.println();
+    Serial.println("[WIFI][WARN] Wi-Fi connection timed out. Reconnecting in background loop.");
+  }
+
   // Generate unique 32-bit boot session ID using hardware RNG
   s_boot_id = esp_random();
   while (s_boot_id == 0) {
@@ -497,6 +580,15 @@ void setup() {
 
 void loop() {
   unsigned long currentMillis = millis();
+
+  // 0. Non-blocking Wi-Fi reconnection check every 10 seconds if disconnected
+  static unsigned long lastWifiReconnectAttempt = 0;
+  if (WiFi.status() != WL_CONNECTED && (currentMillis - lastWifiReconnectAttempt >= 10000)) {
+    lastWifiReconnectAttempt = currentMillis;
+    Serial.println("[WIFI] Wi-Fi disconnected; attempting reconnection...");
+    WiFi.disconnect();
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  }
 
   // 1. Process serial commands (e.g. handshake probe, channel configuration, ping, sample)
   handle_serial_input();
@@ -554,31 +646,36 @@ void loop() {
     // 3. Read AM312 PIR Motion Sensor (Digital 0 or 1)
     int pirMotion = (digitalRead(PIRPIN) == HIGH) ? 1 : 0;
 
-    // 4. Construct and emit clean, single-line JSON payload
+    // 4. Construct clean, single-line JSON payload
     // If DHT11 read timed out or failed checksum, emit 'null' rather than artificial '0.0'
-    Serial.print("{\"node\":\"esp32_gateway\",\"seq\":");
-    Serial.print(sequenceNumber);
-    Serial.print(",\"uptime_ms\":");
-    Serial.print(currentMillis);
-
-    Serial.print(",\"dht11\":{\"valid\":");
-    Serial.print(dhtValid ? 1 : 0);
-    Serial.print(",\"temp_c\":");
+    String payload = "{\"node\":\"esp32_gateway\",\"seq\":";
+    payload += String(sequenceNumber);
+    payload += ",\"uptime_ms\":";
+    payload += String(currentMillis);
+    payload += ",\"dht11\":{\"valid\":";
+    payload += String(dhtValid ? 1 : 0);
+    payload += ",\"temp_c\":";
     if (dhtValid) {
-      Serial.print(temperature, 1);
+      payload += String(temperature, 1);
     } else {
-      Serial.print("null");
+      payload += "null";
     }
-    Serial.print(",\"humidity\":");
+    payload += ",\"humidity\":";
     if (dhtValid) {
-      Serial.print(humidity, 1);
+      payload += String(humidity, 1);
     } else {
-      Serial.print("null");
+      payload += "null";
     }
-    Serial.print("}");
+    payload += "},\"pir\":{\"motion\":";
+    payload += String(pirMotion);
+    payload += "}}";
 
-    Serial.print(",\"pir\":{\"motion\":");
-    Serial.print(pirMotion);
-    Serial.println("}}");
+    // Output over Serial (UART) for local USB monitor/debugging
+    Serial.println(payload);
+
+    // Transmit wirelessly over Wi-Fi (HTTP REST) to Host PC Collector
+    if (WiFi.status() == WL_CONNECTED) {
+      send_http_telemetry(payload);
+    }
   }
 }

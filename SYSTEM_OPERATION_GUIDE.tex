@@ -94,15 +94,18 @@ The system is structured as an out-of-band, multi-stage hybrid detection platfor
               v                                v
        +--------------+                 +--------------------+
        | ESP32 Node   |                 | Windows Hotspot    |
-       | (Sniffer)    |                 | Gateway Adapter    |
+       | (Sensors)    |                 | Gateway Adapter    |
        +--------------+                 +--------------------+
               |                                   |
-              | USB Serial UART (115200 baud)     | TShark Packet Stream
+              | Wireless Wi-Fi HTTP REST          | TShark Packet Stream
+              | (http://192.168.137.1:5000)       | (Live Uplink Traffic)
+              | [or USB Serial Fallback]          |
               v                                   v
        +--------------------------------------------------------+
        |               Python Background Ingestion               |
        |                   (src/live_collector.py)               |
        |                                                        |
+       |  - Wireless HTTP REST Telemetry Server (Port 5000)      |
        |  - 1-Second Sliding Window Feature Extraction          |
        |  - Frozen Dual-Detector Isolation Forest Inference      |
        |  - Deterministic Network Attack Rules (DoS, Scan, ARP)  |
@@ -125,12 +128,12 @@ The system is structured as an out-of-band, multi-stage hybrid detection platfor
 \caption{End-to-End Hybrid Detection and Telemetry Ingestion Architecture.}
 \end{figure}
 
-\subsection{Key Design Guarantee: Zero Network Footprint}
-A fundamental architectural principle of this system is that \textbf{the ESP32 microcontroller does not join any Wi-Fi network and does not host an Access Point (SoftAP)}. 
+\subsection{Telemetry Transmission Modes: Wireless Wi-Fi \& USB Serial}
+The system architecture supports dual concurrent ingestion modalities:
 \begin{itemize}[noitemsep]
-    \item It has \textbf{no IP address}, no MAC binding on the host router, and zero open TCP/UDP sockets.
-    \item It listens passively to raw 802.11 radio frames on its configured channel using ESP-IDF promiscuous filters.
-    \item All telemetry is delivered out-of-band via a physical \textbf{USB Serial cable} directly into the host PC, ensuring that wireless jamming or deauthentication attacks cannot silence or compromise sensor telemetry.
+    \item \textbf{Wireless Wi-Fi Transmission (Primary)}: The ESP32 connects directly to the Windows Mobile Hotspot and streams JSON telemetry over HTTP REST (\texttt{POST /api/telemetry} on port 5000). The ESP32 dynamically resolves the host PC's gateway IP (\texttt{192.168.137.1}), eliminating hardcoded static IPs and enabling complete wireless mobility.
+    \item \textbf{USB Serial UART (Fallback / Debug)}: The ESP32 concurrently outputs identical JSON payloads over UART (115200 baud) for development, debugging, and environments where Wi-Fi connection is unavailable.
+    \item \textbf{Passive Airborne Threat Monitoring}: The ESP32 continues listening passively for 802.11 management attack frames (deauth/disassoc) on its radio channel.
 \end{itemize}
 
 % =============================================================================
@@ -216,7 +219,15 @@ Connect the ESP32 to your PC using the USB cable. Under the \textbf{Tools} menu,
     \item \textbf{Port:} Select the detected COM port (e.g., \texttt{COM3}, \texttt{COM6}).
 \end{itemize}
 
-\subsection{Step 5: Compile and Upload Firmware}
+\subsection{Step 5: Configure Wi-Fi Credentials for Wireless Telemetry}
+Open \texttt{firmware/esp32\_sensor\_node/esp32\_sensor\_node.ino} in Arduino IDE and review the Wi-Fi configuration at the top:
+\begin{lstlisting}[numbers=none]
+#define WIFI_SSID "IoT_Network_Guard"
+#define WIFI_PASSWORD "12345678"
+\end{lstlisting}
+Ensure these credentials match your Windows Mobile Hotspot (or home router). Leaving \texttt{SERVER\_HOST} empty (\texttt{""}) instructs the ESP32 to automatically resolve the host computer's IP using \texttt{WiFi.gatewayIP()} (standard for Windows Hotspot: \texttt{192.168.137.1}).
+
+\subsection{Step 6: Compile and Upload Firmware}
 \begin{enumerate}
     \item Open \texttt{firmware/esp32\_sensor\_node/esp32\_sensor\_node.ino} in the Arduino IDE.
     \item Click the \textbf{Upload} arrow icon ($\rightarrow$) or press \texttt{Ctrl + U}.
@@ -228,16 +239,18 @@ Connecting........_____....._____.....
     \item The upload finishes with \texttt{Hash of data verified} and \texttt{Hard resetting via RTS pin...}.
 \end{enumerate}
 
-\subsection{Step 6: Hardware Verification via Serial Monitor}
+\subsection{Step 7: Hardware Verification via Serial Monitor}
 \begin{enumerate}
     \item In the Arduino IDE, open \textbf{Tools $\rightarrow$ Serial Monitor} (\texttt{Ctrl + Shift + M}).
     \item Set the baud rate dropdown to \textbf{115200 baud} and line ending to \textbf{Newline}.
-    \item Press the \textbf{EN / RST} button on the ESP32. You will observe the boot announcement followed by periodic telemetry:
+    \item Press the \textbf{EN / RST} button on the ESP32. You will observe the Wi-Fi connection and boot announcements followed by periodic telemetry:
 \begin{lstlisting}[numbers=none]
+[WIFI] Connecting to SSID: IoT_Network_Guard.....
+[WIFI] Connected! ESP32 IP: 192.168.137.182 | Gateway: 192.168.137.1
 {"status":"ESP32_TELEMETRY_INITIALIZED","baud":115200}
 {"node":"esp32_gateway","seq":1,"uptime_ms":2014,"dht11":{"valid":1,"temp_c":24.8,"humidity":52.1},"pir":{"motion":0}}
 \end{lstlisting}
-    \item \textbf{CRITICAL}: \textbf{Close the Arduino Serial Monitor window} before starting the Python backend collector. Windows does not allow multiple processes to share the same COM port simultaneously.
+    \item Close the Arduino Serial Monitor window when finished inspecting.
 \end{enumerate}
 
 % =============================================================================
@@ -246,7 +259,7 @@ Connecting........_____....._____.....
 
 The project provides two automated batch action files to accommodate different operational needs:
 \begin{enumerate}
-    \item \textbf{\texttt{run\_system.bat}} (\textbf{Recommended for Live Demonstration}): Boots \textbf{BOTH} the background ingestion collector (connecting to the ESP32 serial port and TShark packet sniffer) and the Streamlit frontend in one go. Live readings appear on the screen immediately.
+    \item \textbf{\texttt{run\_system.bat}} (\textbf{Recommended for Live Demonstration}): Boots \textbf{BOTH} the background ingestion collector (running in Wi-Fi REST mode on port 5000 and TShark packet sniffer) and the Streamlit frontend in one go. Live sensor telemetry from the ESP32 is detected wirelessly and shown on the dashboard immediately.
     \item \textbf{\texttt{run\_frontend.bat}}: Boots \textbf{ONLY} the Streamlit SOC dashboard for viewing existing or historical database records.
 \end{enumerate}
 
@@ -256,7 +269,7 @@ When executed, \texttt{run\_system.bat} performs the following sequential automa
     \item \textbf{Project Root Anchoring}: Uses \texttt{\%~dp0} to guarantee correct working directory context regardless of invocation location.
     \item \textbf{Virtual Environment Detection}: Searches for \texttt{.venv\textbackslash Scripts\textbackslash python.exe}. If absent, falls back to the system Python.
     \item \textbf{Autonomous Database Guard}: Checks if \texttt{data\textbackslash live\_monitoring.db} exists. If not found, it automatically calls \texttt{init\_live\_database(..., seed\_defaults=True)} to provision all 9 database tables and default MAC device profiles.
-    \item \textbf{Background Collector Launch}: Spawns \texttt{src\textbackslash live\_collector.py} in a companion terminal. The collector automatically discovers the ESP32 COM port, executes the sniffer probe handshake, and starts logging telemetry.
+    \item \textbf{Background Collector Launch}: Spawns \texttt{src\textbackslash live\_collector.py -{}-mode wifi -{}-wifi-port 5000} in a companion terminal. The collector establishes the HTTP REST receiver on port 5000 and begins live TShark packet analysis.
     \item \textbf{Streamlit SOC Launch}: Executes \texttt{streamlit run src\textbackslash live\_dashboard.py -{}-server.port 8501} and opens the browser.
 \end{enumerate}
 

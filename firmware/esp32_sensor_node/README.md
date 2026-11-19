@@ -1,22 +1,23 @@
 # ESP32 Dual-Sensor Telemetry Node & Wi-Fi Sniffer Firmware
 
 **Target Microcontroller:** ESP32 Dev Module / NodeMCU-32S / ESP32-WROOM-32  
-**Interface:** USB Serial (UART) at **115200 baud**  
+**Telemetry Interfaces:**
+- **Wireless Wi-Fi REST API (Primary):** HTTP POST to `http://<HOST_IP>:5000/api/telemetry` over Wi-Fi
+- **USB Serial (Concurrent / Fallback / Debug):** UART at **115200 baud**  
 **Firmware File:** `esp32_sensor_node.ino`
 
 ---
 
 ## 1. Overview & Architecture
 
-The ESP32 acts as an **out-of-band hardware sensor and airborne threat detector**. It provides two synchronized telemetry streams to the PC host:
+The ESP32 acts as an **IoT hardware sensor node and airborne threat detector**. It provides two synchronized telemetry streams to the PC host:
 1. **Physical Environment Telemetry**: DHT11 Temperature & Humidity + AM312 PIR Motion.
 2. **Over-the-Air 802.11 Sniffer**: Captures live wireless management attacks (Deauthentication frame subtype 12 and Disassociation frame subtype 10) floating through 2.4 GHz air space.
 
-### Key Architectural Guarantee: Zero Network Footprint
-- The ESP32 does **NOT** connect to Wi-Fi.
-- The ESP32 does **NOT** host an Access Point (SoftAP).
-- The ESP32 has **no IP address**, no open ports, and no wireless credentials.
-- All communications travel strictly through the physical **USB Serial cable** (`COM` port) directly into `src/live_collector.py`.
+### Data Transmission Architecture: Wireless First
+- **Wireless Wi-Fi Transmission (Primary):** The ESP32 connects directly to the Windows Mobile Hotspot (or local Wi-Fi router) and delivers telemetry wirelessly via standard HTTP REST POST requests to the host PC collector (`http://192.168.137.1:5000/api/telemetry`). No USB data tethering is required during normal operation!
+- **Zero Configuration Gateway Targeting:** When connected to the Windows Mobile Hotspot, the ESP32 automatically resolves the host PC IP using `WiFi.gatewayIP()` (typically `192.168.137.1`), meaning no hardcoded host IP is necessary.
+- **USB Serial (Fallback & Debug):** The firmware concurrently streams identical JSON lines over UART at 115200 baud. You can inspect live readings in the Arduino Serial Monitor or run the collector in serial/dual mode if desired.
 
 ---
 
@@ -60,14 +61,33 @@ Select the following settings under the **Tools** menu:
 - **Flash Mode:** `QIO`
 - **Port:** Select your ESP32 COM port (e.g., `COM3`, `COM6`)
 
-### Step 4: Flash the Firmware
+### Step 4: Configure Wi-Fi Credentials & Host IP
+At the top of `esp32_sensor_node.ino`, customize the Wi-Fi credentials to match your Windows Mobile Hotspot (or home router):
+```cpp
+#define WIFI_SSID "IoT_Network_Guard"
+#define WIFI_PASSWORD "12345678"
+```
+- By default, `SERVER_HOST` is empty `""`, meaning the ESP32 automatically targets the Windows Mobile Hotspot default gateway (`192.168.137.1`) on port `5000`.
+- If you are on a home/campus router, set `SERVER_HOST` to your host computer's local IP address (e.g., `"192.168.1.50"`).
+
+### Step 5: Flash the Firmware
 1. Open `firmware/esp32_sensor_node/esp32_sensor_node.ino`.
 2. Click **Upload** (Ctrl + U).
 3. If the IDE gets stuck at `Connecting........_____.....`, press and hold the **BOOT** (or **IO0**) button on your ESP32 until the flashing progress percentage appears, then release it.
+4. Once flashed, the ESP32 will connect to Wi-Fi and start transmitting live readings wirelessly to the collector!
 
 ---
 
-## 4. Serial JSON Protocol Specification
+## 4. Telemetry Specifications
+
+### A. Wireless Wi-Fi HTTP REST Telemetry (POST /api/telemetry)
+Every ~2.0 seconds, the ESP32 sends an HTTP POST with `Content-Type: application/json` containing the environmental sensor payload:
+```json
+{"node":"esp32_gateway","seq":14,"uptime_ms":28120,"dht11":{"valid":1,"temp_c":24.6,"humidity":52.0},"pir":{"motion":0}}
+```
+The collector server immediately returns HTTP 200 `{"status":"OK","result":"SENSOR_TELEMETRY"}` and persists both Node_1 (DHT11) and Node_2 (PIR) into the database.
+
+### B. Serial JSON Protocol (UART 115200 baud)
 
 Communication operates over Serial at **115200 baud, 8 data bits, no parity, 1 stop bit (8N1)**.
 

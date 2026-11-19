@@ -975,8 +975,8 @@ class TestPortScanDeduplication:
             ins1 = collector._persist_attack_results(conn, win_id, [], [res], "ca:34:ea:92:d3:9e", scored)
             assert ins1 == 1
 
-            # Sleep past 50ms cooldown
-            time.sleep(0.06)
+            # Sleep past 50ms cooldown (100ms provides generous margin on Windows timer resolution)
+            time.sleep(0.1)
 
             # Emission 2
             ins2 = collector._persist_attack_results(conn, win_id, [], [res], "ca:34:ea:92:d3:9e", scored)

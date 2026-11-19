@@ -40,7 +40,8 @@ Thumbs.db
 .idea/
 *.orig
 *.orig_*
-scratch/*.docx
+scratch/
+*.docx
 
 
 # Firmware build artifacts
